@@ -1,0 +1,36 @@
+device: cuda
+
+data:
+  dataset: maestro
+  segment_frames: 1001
+
+model:
+  name: hpt_double
+  ckpt: path/to/base_model.pt
+  freeze_base: true
+
+adapter:
+  keymap:
+    vel: "vel"                # 你 base model 输出字典里的 key 名
+    vel_logits: "vel_logits"
+    onset_logits: "onset_logits"
+    frame_logits: "frame_logits"
+  transpose: {}               # 如果输出是 (B,88,T)，你就在这里 permute 成 (B,T,88)
+
+score_informed:
+  method: scrr
+  params: {}
+
+loss:
+  w_l1: 1.0
+  w_bce: 0.5
+  w_delta: 0.01
+  use_huber: false
+
+optim:
+  name: adamw
+  lr: 0.001
+  weight_decay: 0.0001
+
+trainer:
+  epochs: 50

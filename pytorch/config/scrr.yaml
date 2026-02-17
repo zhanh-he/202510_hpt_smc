@@ -1,0 +1,28 @@
+score_informed:
+  method: scrr
+  params:
+    in_feats: ["vel_logits", "vel"]   # 仅依赖你现有声学输出
+    hidden: 48
+    n_blocks: 8
+    dilations_t: [1,2,4,8,1,2,4,8]
+    alpha: 0.2
+    mask_outside_onset: true
+
+
+# score_informed:
+#   method: scrr
+#   params:
+#     in_feats: ["vel_logits", "vel"]   # 仅依赖你现有声学输出
+#     hidden: 24
+#     n_blocks: 8
+#     dilations_t: [1,2,4,8,1,2,4,8]
+#     alpha: 0.2
+#     use_film: true
+#     norm: groupnorm
+#     mask_outside_onset: true
+
+# loss:
+#   w_huber: 1.0
+#   huber_delta: 0.1
+#   w_bce: 0.5
+#   w_delta_l1: 0.01
