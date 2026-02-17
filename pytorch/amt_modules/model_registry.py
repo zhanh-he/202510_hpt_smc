@@ -3,14 +3,12 @@ from __future__ import annotations
 from typing import Dict, Type
 import torch.nn as nn
 
-from model_HPT import Single_Velocity_HPT, Dual_Velocity_HPT, Triple_Velocity_HPT
-from model_DynEst import DynestAudioCNN
+from .hpt_adapter import Single_Velocity_HPT
+from .dynest_adapter import DynestAudioCNN
 from .hppnet_adapter import HPPNet_SP
 
 MODEL_REGISTRY: Dict[str, Type[nn.Module]] = {
     "Single_Velocity_HPT": Single_Velocity_HPT,
-    "Dual_Velocity_HPT": Dual_Velocity_HPT,
-    "Triple_Velocity_HPT": Triple_Velocity_HPT,
     "DynestAudioCNN": DynestAudioCNN,
     "HPPNet_SP": HPPNet_SP,
 }

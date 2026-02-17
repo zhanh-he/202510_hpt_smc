@@ -1,4 +1,5 @@
 import torch
+from score_inf.utils import masked_bce_with_logits, masked_huber, masked_l1, safe_logit
 
 
 def _align_time_dim(*tensors):
@@ -177,6 +178,65 @@ def combined_loss(model, output_dict, target_dict):
     count_inversions_loss = count_inversions(model, output_dict, target_dict)
     
     return velocity_bce_loss + count_inversions_loss
+
+
+def _cfg_get(cfg_obj, key, default):
+    if cfg_obj is None:
+        return default
+    if hasattr(cfg_obj, "get"):
+        return cfg_obj.get(key, default)
+    return getattr(cfg_obj, key, default)
+
+
+def score_inf_custom_loss(output_dict, target_dict, cond_dict, cfg):
+    """Custom score-informed loss (masked L1/Huber + masked BCE logits + optional delta penalty)."""
+    vel_corr = output_dict["vel_corr"]
+    velocity_scale = float(getattr(cfg.feature, "velocity_scale", 128))
+    gt_vel = target_dict["velocity_roll"] / velocity_scale
+
+    onset_mask = None
+    if isinstance(cond_dict, dict):
+        onset_mask = cond_dict.get("onset")
+    if onset_mask is None:
+        onset_mask = target_dict["onset_roll"]
+
+    loss_cfg = getattr(cfg, "loss", None)
+    w_l1 = float(_cfg_get(loss_cfg, "w_l1", 1.0))
+    w_bce = float(_cfg_get(loss_cfg, "w_bce", 0.5))
+    w_delta = float(_cfg_get(loss_cfg, "w_delta", 0.0))
+    use_huber = bool(_cfg_get(loss_cfg, "use_huber", False))
+    huber_delta = float(_cfg_get(loss_cfg, "huber_delta", 0.1))
+
+    if use_huber:
+        loss_reg = masked_huber(vel_corr, gt_vel, onset_mask, delta=huber_delta)
+    else:
+        loss_reg = masked_l1(vel_corr, gt_vel, onset_mask)
+
+    vel_corr_logits = safe_logit(vel_corr)
+    loss_bce = masked_bce_with_logits(vel_corr_logits, gt_vel, onset_mask)
+    loss = w_l1 * loss_reg + w_bce * loss_bce
+
+    if w_delta > 0.0 and output_dict.get("delta", None) is not None:
+        delta = output_dict["delta"]
+        if torch.is_tensor(delta) and delta.dim() == vel_corr.dim():
+            loss = loss + w_delta * delta.abs().mean()
+
+    return loss
+
+
+def compute_loss(cfg, model, output_dict, target_dict, cond_dict=None):
+    """
+    Unified training loss entry for both legacy and score-informed trainers.
+    - If cfg.loss exists: use score-inf custom loss.
+    - Else: use cfg.exp.loss_type via get_loss_func.
+    """
+    if hasattr(cfg, "loss"):
+        return score_inf_custom_loss(output_dict, target_dict, cond_dict, cfg)
+
+    if "velocity_output" not in output_dict and "vel_corr" in output_dict:
+        output_dict = {"velocity_output": output_dict["vel_corr"]}
+
+    return get_loss_func(cfg.exp.loss_type)(model, output_dict, target_dict)
                                              
 
 def get_loss_func(loss_type):

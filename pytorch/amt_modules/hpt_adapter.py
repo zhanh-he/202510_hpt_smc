@@ -90,7 +90,7 @@ class HPTConvBlock(nn.Module):
         return x
 
 
-class OriginalModelHPT2020(nn.Module):
+class HPT2020Module(nn.Module):
     def __init__(self, classes_num, input_shape, momentum):
         super().__init__()
         self.conv_block1 = HPTConvBlock(
@@ -176,7 +176,7 @@ class Single_Velocity_HPT(nn.Module):
             frames_per_second,
         )
         self.bn0 = nn.BatchNorm2d(self.FRE, momentum)
-        self.velocity_model = OriginalModelHPT2020(classes_num, self.FRE, momentum)
+        self.velocity_model = HPT2020Module(classes_num, self.FRE, momentum)
         self.init_weight()
 
     def init_weight(self):

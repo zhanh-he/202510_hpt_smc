@@ -20,7 +20,7 @@ from model_FilmUnet import FiLMUNetPretrained
 from model_DynEst import DynestAudioCNN
 from amt_modules.hppnet_adapter import HPPNet_SP
 
-from losses import get_loss_func
+from losses import compute_loss
 from evaluate import SegmentEvaluator
 
 from hydra import initialize, compose
@@ -374,7 +374,7 @@ def forward_pass(cfg, model, batch_data_dict, device):
 
     # Forward pass & Compute loss
     batch_output_dict = model(*inputs)
-    loss = get_loss_func(cfg.exp.loss_type)(model, batch_output_dict, batch_data_dict)
+    loss = compute_loss(cfg, model, batch_output_dict, batch_data_dict)
 
     return batch_output_dict, loss
 

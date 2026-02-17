@@ -24,13 +24,12 @@ from data_generator import (
     collate_fn,
 )
 from utilities import create_folder, create_logging, get_model_name
-from losses import get_loss_func
+from losses import compute_loss
 from evaluate import _segments_from_output, _kim_metrics_from_segments
 
 from amt_modules import build_adapter
 from score_inf import build_score_inf
 from score_inf.wrapper import ScoreInfWrapper
-from score_inf.utils import masked_l1, masked_bce_with_logits, masked_huber, safe_logit
 
 
 def init_wandb(cfg, wandb_run_id: Optional[str]):
@@ -346,37 +345,6 @@ def _evaluate_score_inf(model, dataloader, cfg, device) -> Dict[str, float]:
     return _kim_metrics_from_segments(segments, targets)
 
 
-def _compute_custom_loss(cfg, out, cond, target_dict):
-    vel_corr = out["vel_corr"]
-    velocity_scale = getattr(cfg.feature, "velocity_scale", 128)
-    gt_vel = target_dict["velocity_roll"] / float(velocity_scale)
-
-    mask = cond["onset"]
-    vel_corr_logits = safe_logit(vel_corr)
-
-    loss_cfg = cfg.loss
-    w_l1 = float(loss_cfg.get("w_l1", 1.0))
-    w_bce = float(loss_cfg.get("w_bce", 0.5))
-    w_delta = float(loss_cfg.get("w_delta", 0.0))
-    use_huber = bool(loss_cfg.get("use_huber", False))
-    huber_delta = float(loss_cfg.get("huber_delta", 0.1))
-
-    if use_huber:
-        loss_reg = masked_huber(vel_corr, gt_vel, mask, delta=huber_delta)
-    else:
-        loss_reg = masked_l1(vel_corr, gt_vel, mask)
-
-    loss_bce = masked_bce_with_logits(vel_corr_logits, gt_vel, mask)
-    loss = w_l1 * loss_reg + w_bce * loss_bce
-
-    if w_delta > 0.0 and out.get("delta", None) is not None:
-        delta = out["delta"]
-        if delta.dim() == vel_corr.dim():
-            loss = loss + w_delta * (delta.abs().mean())
-
-    return loss
-
-
 def train(cfg):
     device = torch.device("cuda") if cfg.exp.cuda and torch.cuda.is_available() else torch.device("cpu")
 
@@ -514,12 +482,7 @@ def train(cfg):
         model.train()
         audio, cond, batch_torch, base_inputs = _prepare_batch(cfg, batch_data_dict, device)
         out = model(audio, cond, *base_inputs)
-
-        if hasattr(cfg, "loss"):
-            loss = _compute_custom_loss(cfg, out, cond, batch_torch)
-        else:
-            output_dict = {"velocity_output": out["vel_corr"]}
-            loss = get_loss_func(cfg.exp.loss_type)(model, output_dict, batch_torch)
+        loss = compute_loss(cfg, model, out, batch_torch, cond_dict=cond)
 
         print(iteration, loss)
         train_loss += loss.item()
