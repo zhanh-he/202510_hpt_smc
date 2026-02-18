@@ -98,7 +98,7 @@ def score_inf_custom_loss(cfg, output_dict, target_dict, cond_dict=None):
     vel_corr = _get_velocity_pred(output_dict)
     gt_vel = _get_velocity_target(target_dict)
 
-    onset_mask = cond_dict["onset"]
+    onset_mask = target_dict["onset_roll"]
 
     w_l1 = float(cfg.loss.w_l1)
     w_bce = float(cfg.loss.w_bce)              

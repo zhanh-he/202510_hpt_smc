@@ -9,7 +9,6 @@ from hydra import compose, initialize
 from sklearn.metrics import f1_score, precision_score, recall_score
 from tqdm import tqdm
 
-from inference import VeloTranscription
 from utilities import (
     TargetProcessor,
     create_folder,
@@ -36,13 +35,11 @@ def note_level_l1_per_window(
         gt_onset_frame = target_segment["onset_roll"][nth_frame]
         if np.count_nonzero(gt_onset_frame) == 0:
             continue
-
         pred_frame = output_segment["velocity_output"][nth_frame]
         gt_frame = target_segment["velocity_roll"][nth_frame]
         pred_onset = np.multiply(pred_frame, gt_onset_frame) * 128.0
         gt_onset = np.multiply(gt_frame, gt_onset_frame)
         note_error = np.abs(pred_onset - gt_onset)
-
         num_notes += int(np.count_nonzero(gt_onset_frame))
         error_rows.append(note_error[np.newaxis, :])
 
@@ -187,15 +184,9 @@ def gt_to_note_list(
     std_max_error = float(np.std(accum_error)) if accum_error else 0.0
 
     return (
-        frame_max_error,
-        std_max_error,
-        error_profile,
-        f1,
-        precision,
-        recall,
-        frame_f1,
-        frame_precision,
-        frame_recall,
+        frame_max_error, std_max_error, 
+        error_profile, f1, precision, recall,
+        frame_f1, frame_precision, frame_recall,
     )
 
 
@@ -252,9 +243,6 @@ class KimStyleEvaluator:
         ] = None,
         results_subdir: str = "kim_eval",
     ):
-        if cfg.model.type != "velo":
-            raise ValueError("Kim-style evaluation is defined for velocity models only.")
-
         self.cfg = cfg
         self.model_name = get_model_name(cfg)
         self.roll_adapter = roll_adapter
@@ -276,6 +264,7 @@ class KimStyleEvaluator:
         if not self.checkpoint_path.exists():
             raise FileNotFoundError(f"Checkpoint not found: {self.checkpoint_path}")
 
+        from inference import VeloTranscription
         self.transcriptor = VeloTranscription(str(self.checkpoint_path), cfg)
 
         hdf5_dir = resolve_hdf5_dir(cfg.exp.workspace, cfg.dataset.test_set, cfg.feature.sample_rate)
@@ -294,7 +283,7 @@ class KimStyleEvaluator:
     def _prepare_inputs(self, target_dict: Dict[str, np.ndarray]) -> Tuple[Optional[np.ndarray], Optional[np.ndarray]]:
         target_dict["exframe_roll"] = target_dict["frame_roll"] * (1 - target_dict["onset_roll"])
 
-        if self.cfg.model.name in {"FiLMUNetPretrained", "FiLMUNet"}:
+        if self.cfg.model.type in {"filmunet_pretrained", "filmunet"}:
             input2 = target_dict["frame_roll"] if self.cfg.model.kim_condition == "frame" else None
             input3 = None
         else:
@@ -346,17 +335,8 @@ class KimStyleEvaluator:
         output_dict_list = [output_entry]
         target_dict_list = [target_entry]
 
-        (
-            frame_max_error,
-            frame_max_std,
-            error_profile,
-            f1,
-            precision,
-            recall,
-            frame_mask_f1,
-            frame_mask_precision,
-            frame_mask_recall,
-        ) = gt_to_note_list(output_dict_list, target_dict_list)
+        frame_max_error, frame_max_std, error_profile, f1, precision, recall, \
+            frame_mask_f1, frame_mask_precision, frame_mask_recall = gt_to_note_list(output_dict_list, target_dict_list)
 
         onset_masked_error, onset_masked_std = eval_from_list(output_dict_list, target_dict_list)
 

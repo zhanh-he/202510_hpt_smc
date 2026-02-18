@@ -14,7 +14,7 @@ from piano_vad import (note_detection_with_onset_offset_regress,
 def get_model_name(cfg):
     """Construct model name based on model name and optional extra inputs."""
     extras = '+'.join(filter(None, [cfg.model.input2, cfg.model.input3]))
-    return f"{cfg.model.name}" + (f"+{extras}" if extras else "")
+    return f"{cfg.model.type}" + (f"+{extras}" if extras else "")
 
 
 def create_folder(fd):
@@ -811,73 +811,6 @@ def write_events_to_midi(start_time, note_events, pedal_events, midi_path):
     midi_file.save(midi_path)
 
 
-def plot_waveform_midi_targets(data_dict, start_time, note_events, cfg):
-    """For debugging. Write out waveform, MIDI and plot targets for an 
-    audio segment.
-
-    Args:
-      data_dict: {
-        'waveform': (samples_num,),
-        'onset_roll': (frames_num, classes_num), 
-        'offset_roll': (frames_num, classes_num), 
-        'reg_onset_roll': (frames_num, classes_num), 
-        'reg_offset_roll': (frames_num, classes_num), 
-        'frame_roll': (frames_num, classes_num), 
-        'velocity_roll': (frames_num, classes_num), 
-        'mask_roll':  (frames_num, classes_num), 
-        'reg_pedal_onset_roll': (frames_num,),
-        'reg_pedal_offset_roll': (frames_num,),
-        'pedal_frame_roll': (frames_num,)}
-      start_time: float
-      note_events: list of dict, e.g. [
-        {'midi_note': 51, 'onset_time': 696.63544, 'offset_time': 696.9948, 'velocity': 44}, 
-        {'midi_note': 58, 'onset_time': 696.99585, 'offset_time': 697.18646, 'velocity': 50}
-    """
-    import matplotlib.pyplot as plt
-
-    create_folder('debug')
-    audio_path = 'debug/debug.wav'
-    midi_path = 'debug/debug.mid'
-    fig_path = 'debug/debug.pdf'
-
-    librosa.output.write_wav(audio_path, data_dict['waveform'], sr=cfg.feature.sample_rate)
-    write_events_to_midi(start_time, note_events, midi_path)
-    x = librosa.core.stft(y=data_dict['waveform'], n_fft=2048, hop_length=160, window='hann', center=True)
-    x = np.abs(x) ** 2
-
-    fig, axs = plt.subplots(11, 1, sharex=True, figsize=(30, 30))
-    fontsize = 20
-    axs[0].matshow(np.log(x), origin='lower', aspect='auto', cmap='jet')
-    axs[1].matshow(data_dict['onset_roll'].T, origin='lower', aspect='auto', cmap='jet')
-    axs[2].matshow(data_dict['offset_roll'].T, origin='lower', aspect='auto', cmap='jet')
-    axs[3].matshow(data_dict['reg_onset_roll'].T, origin='lower', aspect='auto', cmap='jet')
-    axs[4].matshow(data_dict['reg_offset_roll'].T, origin='lower', aspect='auto', cmap='jet')
-    axs[5].matshow(data_dict['frame_roll'].T, origin='lower', aspect='auto', cmap='jet')
-    axs[6].matshow(data_dict['velocity_roll'].T, origin='lower', aspect='auto', cmap='jet')
-    axs[7].matshow(data_dict['mask_roll'].T, origin='lower', aspect='auto', cmap='jet')
-    axs[8].matshow(data_dict['reg_pedal_onset_roll'][:, None].T, origin='lower', aspect='auto', cmap='jet')
-    axs[9].matshow(data_dict['reg_pedal_offset_roll'][:, None].T, origin='lower', aspect='auto', cmap='jet')
-    axs[10].matshow(data_dict['pedal_frame_roll'][:, None].T, origin='lower', aspect='auto', cmap='jet')
-    axs[0].set_title('Log spectrogram', fontsize=fontsize)
-    axs[1].set_title('onset_roll', fontsize=fontsize)
-    axs[2].set_title('offset_roll', fontsize=fontsize)
-    axs[3].set_title('reg_onset_roll', fontsize=fontsize)
-    axs[4].set_title('reg_offset_roll', fontsize=fontsize)
-    axs[5].set_title('frame_roll', fontsize=fontsize)
-    axs[6].set_title('velocity_roll', fontsize=fontsize)
-    axs[7].set_title('mask_roll', fontsize=fontsize)
-    axs[8].set_title('reg_pedal_onset_roll', fontsize=fontsize)
-    axs[9].set_title('reg_pedal_offset_roll', fontsize=fontsize)
-    axs[10].set_title('pedal_frame_roll', fontsize=fontsize)
-    axs[10].set_xlabel('frames')
-    axs[10].xaxis.set_label_position('bottom')
-    axs[10].xaxis.set_ticks_position('bottom')
-    plt.tight_layout(1, 1, 1)
-    plt.savefig(fig_path)
-
-    print('Write out to {}, {}, {}!'.format(audio_path, midi_path, fig_path))
-
-
 class RegressionPostProcessor(object):
     def __init__(self, cfg):
         """Postprocess the output probabilities of a transription model to MIDI 
@@ -1509,4 +1442,3 @@ class OnsetsFramesPostProcessor(object):
                 'offset_time': pedal_on_offs[i, 1]})
         
         return pedal_events
-

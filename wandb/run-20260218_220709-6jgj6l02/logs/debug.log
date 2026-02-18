@@ -1,0 +1,23 @@
+2026-02-18 22:07:09,771 INFO    MainThread:3027604 [wandb_setup.py:_flush():68] Current SDK version is 0.19.3
+2026-02-18 22:07:09,771 INFO    MainThread:3027604 [wandb_setup.py:_flush():68] Configure stats pid to 3027604
+2026-02-18 22:07:09,772 INFO    MainThread:3027604 [wandb_setup.py:_flush():68] Loading settings from /home/mengh/.config/wandb/settings
+2026-02-18 22:07:09,772 INFO    MainThread:3027604 [wandb_setup.py:_flush():68] Loading settings from /media/mengh/SharedData/zhanh/202510_hpt_smc/wandb/settings
+2026-02-18 22:07:09,772 INFO    MainThread:3027604 [wandb_setup.py:_flush():68] Loading settings from environment variables
+2026-02-18 22:07:09,772 INFO    MainThread:3027604 [wandb_init.py:_log_setup():598] Logging user logs to /media/mengh/SharedData/zhanh/202510_hpt_smc/wandb/run-20260218_220709-6jgj6l02/logs/debug.log
+2026-02-18 22:07:09,772 INFO    MainThread:3027604 [wandb_init.py:_log_setup():599] Logging internal logs to /media/mengh/SharedData/zhanh/202510_hpt_smc/wandb/run-20260218_220709-6jgj6l02/logs/debug-internal.log
+2026-02-18 22:07:09,772 INFO    MainThread:3027604 [wandb_init.py:init():714] calling init triggers
+2026-02-18 22:07:09,772 INFO    MainThread:3027604 [wandb_init.py:init():719] wandb.init called with sweep_config: {}
+config: {'wandb': {'project': '202602_smc', 'name': 'logmel-hpt-direct_output-score_inf_custom-k0.5-l11.0-b0.5-d0.01-uhTrue-wh1.0-hd0.1-extNoneNone-sr22050', 'comment': 'mel128', 'log_velocity_interval': 10000}, 'exp': {'workspace': '/media/mengh/SharedData/zhanh/202510_hpt_data/workspaces', 'total_iteration': 120000, 'save_iteration': 10000, 'eval_iteration': 10000, 'learning_rate': 0.0001, 'optim': 'adam', 'decay': True, 'reduce_iteration': 10000, 'random_seed': 86, 'mini_data': False, 'cuda': True, 'num_workers': 12, 'batch_size': 12, 'run_infer': 'single', 'ckpt_iteration': '', 'ckpt_file': ''}, 'feature': {'audio_feature': 'logmel', 'classes_num': 88, 'segment_seconds': 10.0, 'hop_seconds': 1.0, 'sample_rate': 22050, 'fft_size': 2048, 'frames_per_second': 100, 'augmentor': None, 'begin_note': 21, 'velocity_scale': 128, 'max_note_shift': 0}, 'dataset': {'train_set': 'maestro', 'test_set': 'smd', 'train_h5': '/media/mengh/SharedData/zhanh/202510_hpt_data/workspaces/hdf5s/maestro', 'test_h5': '/media/mengh/SharedData/zhanh/202510_hpt_data/workspaces/hdf5s/smd', 'smd_dir': '../Dataset/SMD', 'maestro_dir': '../Dataset/maestro-v3.0.0', 'maps_dir': '../Dataset/MAPS'}, 'model': {'type': 'hpt', 'params': {}, 'input2': None, 'input3': None, 'kim_condition': 'frame', 'pretrained_checkpoint': '/media/datadisk/home/22828187/zhanh/202510_hpt_data/workspaces/checkpoints/FiLMUNetPretrained+frame/1000000_iterations.pth', 'hppnet_model_size': 128}, 'score_informed': {'method': 'direct_output', 'params': {}, 'train_mode': 'joint', 'switch_iteration': 100000}, 'post': {'post_processor_type': 'regression', 'frame_threshold': 0.3, 'onset_threshold': 0.3, 'offset_threshold': 0.3, 'pedal_offset_threshold': 0.2}, 'loss': {'loss_type': 'score_inf_custom', 'kim_loss_alpha': 0.5, 'w_l1': 1.0, 'w_bce': 0.5, 'w_delta': 0.01, 'use_huber': True, 'w_huber': 1.0, 'huber_delta': 0.1}}
+2026-02-18 22:07:09,772 INFO    MainThread:3027604 [wandb_init.py:init():745] starting backend
+2026-02-18 22:07:09,975 INFO    MainThread:3027604 [wandb_init.py:init():749] sending inform_init request
+2026-02-18 22:07:09,977 INFO    MainThread:3027604 [backend.py:_multiprocessing_setup():104] multiprocessing start_methods=fork,spawn,forkserver, using: spawn
+2026-02-18 22:07:09,977 INFO    MainThread:3027604 [wandb_init.py:init():764] backend started and connected
+2026-02-18 22:07:09,978 INFO    MainThread:3027604 [wandb_init.py:init():857] updated telemetry
+2026-02-18 22:07:09,984 INFO    MainThread:3027604 [wandb_init.py:init():889] communicating run to backend with 90.0 second timeout
+2026-02-18 22:07:10,491 INFO    MainThread:3027604 [wandb_init.py:init():941] starting run threads in backend
+2026-02-18 22:07:10,551 INFO    MainThread:3027604 [wandb_run.py:_console_start():2420] atexit reg
+2026-02-18 22:07:10,551 INFO    MainThread:3027604 [wandb_run.py:_redirect():2270] redirect: wrap_raw
+2026-02-18 22:07:10,551 INFO    MainThread:3027604 [wandb_run.py:_redirect():2335] Wrapping output streams.
+2026-02-18 22:07:10,551 INFO    MainThread:3027604 [wandb_run.py:_redirect():2360] Redirects installed.
+2026-02-18 22:07:10,552 INFO    MainThread:3027604 [wandb_init.py:init():983] run started, returning control to user process
+2026-02-18 22:08:15,943 WARNING MsgRouterThr:3027604 [router.py:message_loop():75] message_loop has been closed

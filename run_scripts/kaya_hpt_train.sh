@@ -61,24 +61,34 @@ ADAPTER=${ADAPTERS[$ADAPTER_IDX]}
 METHOD=${METHODS[$METHOD_IDX]}
 LOSS_TYPE=${LOSSES[$LOSS_IDX]}
 
-case "$ADAPTER" in
-  hpt) MODEL_NAME="Single_Velocity_HPT" ;;
-  hppnet) MODEL_NAME="HPPNet_SP" ;;
-  dynest) MODEL_NAME="DynestAudioCNN" ;;
-  *) echo "Unknown adapter: $ADAPTER"; exit 1 ;;
-esac
-
 echo "Adapter: $ADAPTER"
-echo "Model  : $MODEL_NAME"
 echo "Method : $METHOD"
 echo "Loss   : $LOSS_TYPE"
 
+case "$METHOD" in
+  direct_output)
+    INPUT2=null
+    INPUT3=null
+    ;;
+  note_editor)
+    INPUT2=onset
+    INPUT3=frame
+    ;;
+  scrr|dual_gated|bilstm)
+    INPUT2=onset
+    INPUT3=frame
+    ;;
+  *)
+    echo "Unknown method: $METHOD"
+    exit 1
+    ;;
+esac
+
 python pytorch/train_score_inf.py \
   exp.workspace="$WORKSPACE_DIR" \
-  model.name="$MODEL_NAME" \
-  model.input2=null \
-  model.input3=null \
-  adapter.type="$ADAPTER" \
+  model.input2="$INPUT2" \
+  model.input3="$INPUT3" \
+  model.type="$ADAPTER" \
   score_informed.method="$METHOD" \
   loss.loss_type="$LOSS_TYPE"
 

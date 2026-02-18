@@ -1,0 +1,7 @@
+{"time":"2026-02-18T22:33:26.209121066+11:00","level":"INFO","msg":"stream: starting","core version":"0.19.3","symlink path":"/media/mengh/SharedData/zhanh/202510_hpt_smc/wandb/run-20260218_223325-84fusczm/logs/debug-core.log"}
+{"time":"2026-02-18T22:33:26.312576519+11:00","level":"INFO","msg":"created new stream","id":"84fusczm"}
+{"time":"2026-02-18T22:33:26.312618799+11:00","level":"INFO","msg":"stream: started","id":"84fusczm"}
+{"time":"2026-02-18T22:33:26.312643065+11:00","level":"INFO","msg":"writer: Do: started","stream_id":"84fusczm"}
+{"time":"2026-02-18T22:33:26.312673292+11:00","level":"INFO","msg":"handler: started","stream_id":"84fusczm"}
+{"time":"2026-02-18T22:33:26.312658674+11:00","level":"INFO","msg":"sender: started","stream_id":"84fusczm"}
+{"time":"2026-02-18T22:33:26.681535679+11:00","level":"INFO","msg":"Starting system monitor"}

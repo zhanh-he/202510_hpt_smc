@@ -1,6 +1,6 @@
 wandb:
-  project: "202602_hpt"
-  name: "${feature.audio_feature}-${adapter.type}-${model.name}-${score_informed.method}-${loss.loss_type}-k${loss.kim_loss_alpha}-l1${loss.w_l1}-b${loss.w_bce}-d${loss.w_delta}-uh${loss.use_huber}-wh${loss.w_huber}-hd${loss.huber_delta}-ext${model.input2}${model.input3}-sr${feature.sample_rate}" # -iter${exp.total_iteration}
+  project: "202602_smc"
+  name: "${feature.audio_feature}-${model.type}-${score_informed.method}-${loss.loss_type}-k${loss.kim_loss_alpha}-l1${loss.w_l1}-b${loss.w_bce}-d${loss.w_delta}-uh${loss.use_huber}-wh${loss.w_huber}-hd${loss.huber_delta}-ext${model.input2}${model.input3}-sr${feature.sample_rate}" # -iter${exp.total_iteration}
   comment: "mel128"
   log_velocity_interval: ${exp.eval_iteration}  # Set 0/null to disable WandB velocity roll images
 
@@ -10,7 +10,6 @@ exp:
   # workspace: "/media/datadisk/home/22828187/zhanh/202510_hpt_data/workspaces" #uwa
   # workspace: "/Users/hanyu/Documents/ipynb/202510_hpt_data/workspaces" #mac
   workspace: "/media/mengh/SharedData/zhanh/202510_hpt_data/workspaces" #mengh
-  resume_iteration: 0
   total_iteration: 120_000 # 200_000 # 300_000 # 360_000
   save_iteration: 10_000    # 6_000 # 6_000
   eval_iteration: 10_000    # 6_000 # 6_000
@@ -23,7 +22,6 @@ exp:
 
   mini_data: False # True when developing model
   cuda: True
-  debug: False
   num_workers: 12 # 6 for Score Calculating
   batch_size: 12
 
@@ -68,24 +66,28 @@ dataset:
   maps_dir: "../Dataset/MAPS"
 
 
+# ---------------------------
+# AMT modules (base model + adapter + conditioning)
+# ---------------------------
 model:
-  type: "velo" # "notes"
-  # -------------------------------------------------------------------------
-  # name options:
-  #   Single_Velocity_HPT
-  #   DynestAudioCNN
-  #   HPPNet_SP
-  # -------------------------------------------------------------------------
-  name: "Single_Velocity_HPT"
+  type: "hpt"  # hpt | hppnet | dynest
+  params: {}
   # score-inf condition selector:
-  # null+null => method defaults (typically onset+frame+exframe in method code).
-  # if either input is set, it overrides method cond selection.
-  # for scrr/dual_gated/bilstm, onset is auto-included when missing.
-  input2: null # frame | exframe | onset | null
-  input3: null # frame | exframe | onset | null
+  # direct_output: ignore input2/input3.
+  # bilstm/scrr/dual_gated: cond = selected non-null inputs from input2/input3.
+  # note_editor: input2 must be onset; input3 is null/frame/exframe.
+  input2: null # onset | frame | exframe | null
+  input3: null # onset | frame | exframe | null
   kim_condition: "frame" # for FiLMUNetPretrained only: frame | none
   pretrained_checkpoint: "/media/datadisk/home/22828187/zhanh/202510_hpt_data/workspaces/checkpoints/FiLMUNetPretrained+frame/1000000_iterations.pth"
   hppnet_model_size: 128
+
+
+score_informed:
+  method: "direct_output"     # direct_output | scrr | dual_gated | note_editor | bilstm
+  params: {}
+  train_mode: "joint"         # joint | adapter_then_score | adapter_then_joint
+  switch_iteration: 100_000    # phase switch point for staged modes
 
 
 post:
@@ -95,16 +97,6 @@ post:
   onset_threshold: 0.3
   offset_threshold: 0.3
   pedal_offset_threshold: 0.2
-
-
-score:
-  evaluate_frame: True
-  evaluate_velocity: True
-  evaluate_pedal: False # No implemented yet
-  
-  onset_tolerance: 0.05 # 1
-  offset_ratio: 0.2 # null | 0.2
-  offset_min_tolerance: # 0.05 # 1
 
 # ---------------------------
 # Loss configuration
@@ -118,17 +110,3 @@ loss:
   use_huber: true
   w_huber: 1.0
   huber_delta: 0.1
-
-# ---------------------------
-# Score-informed training (train_score_inf.py)
-# ---------------------------
-adapter:
-  type: "hpt"   # hpt | hppnet | dynest
-  params: {}
-
-score_informed:
-  method: "direct_output"     # direct_output | scrr | dual_gated | note_editor | bilstm
-  params: {}
-  freeze_base: false
-  base_checkpoint: ""    # path to pretrained base model
-  base_iteration: ""     # optional iteration id under workspace/checkpoints

@@ -38,12 +38,7 @@ def _stack_cond(cond: CondIO, keys: List[str]) -> torch.Tensor:
     # return (B,C,T,88)
     maps = []
     for k in keys:
-        v = getattr(cond, k, None)
-        if v is None:
-            # if missing, use zeros
-            maps.append(torch.zeros_like(cond.onset))
-        else:
-            maps.append(v)
+        maps.append(getattr(cond, k))
     return torch.stack(maps, dim=1)
 
 @register_score_inf("scrr")
@@ -57,7 +52,7 @@ class SCRR(nn.Module):
     def __init__(
         self,
         in_feats: List[str] = ["vel_logits"],                 # vel/vel_logits or acoustic.extra keys
-        cond_keys: List[str] = ["onset", "frame", "exframe"], # GT-provided; missing ones become zeros
+        cond_keys: List[str] = ["onset", "frame", "exframe"], # required cond maps
         hidden: int = 48,
         n_blocks: int = 8,
         dilations_t: Optional[List[int]] = None,
@@ -120,7 +115,7 @@ class SCRR(nn.Module):
         vel0 = self._get_feat(acoustic, "vel")
         vel_corr = torch.clamp(vel0 + self.alpha * torch.tanh(delta), 0.0, 1.0)
 
-        if self.mask_outside_onset:
+        if self.mask_outside_onset and cond.onset is not None:
             vel_corr = vel_corr * cond.onset
 
         return {"vel_corr": vel_corr, "delta": delta, "debug": {"vel0": vel0}}

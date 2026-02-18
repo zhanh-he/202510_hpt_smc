@@ -83,14 +83,27 @@ class SegmentEvaluator(object):
         self.input2 = cfg.model.input2
         self.input3 = cfg.model.input3
         self.score_inf = score_inf
+        score_cfg = getattr(cfg, "score_informed", None)
+        self.score_method = getattr(score_cfg, "method", "direct_output") if score_cfg is not None else "direct_output"
+        self.score_cond_keys = self._resolve_score_cond_keys() if self.score_inf else []
+
+    def _resolve_score_cond_keys(self):
+        cond_selected = []
+        for key in [self.input2, self.input3]:
+            if key and key not in cond_selected:
+                cond_selected.append(key)
+
+        if self.score_method == "direct_output":
+            return []
+        if self.score_method == "note_editor":
+            return ["onset"] + ([self.input3] if self.input3 else [])
+        if self.score_method in ("bilstm", "scrr", "dual_gated"):
+            return cond_selected
+        return cond_selected
 
     def _forward_score_inf(self, batch_data_dict, device):
         audio = move_data_to_device(batch_data_dict["waveform"], device)
-        cond = {
-            "onset": move_data_to_device(batch_data_dict["onset_roll"], device),
-            "frame": move_data_to_device(batch_data_dict.get("frame_roll"), device) if batch_data_dict.get("frame_roll") is not None else None,
-            "exframe": move_data_to_device(batch_data_dict.get("exframe_roll"), device) if batch_data_dict.get("exframe_roll") is not None else None,
-        }
+        cond = {k: move_data_to_device(batch_data_dict[f"{k}_roll"], device) for k in self.score_cond_keys}
 
         with torch.no_grad():
             self.model.eval()
@@ -125,17 +138,18 @@ class SegmentEvaluator(object):
         statistics = {}
         output_dict = {}
         device = next(self.model.parameters()).device
+        required_target_keys = ("velocity_roll", "frame_roll", "onset_roll", "pedal_frame_roll")
 
         for batch_data_dict in dataloader:
             out = self._forward_score_inf(batch_data_dict, device) if self.score_inf else self._forward_legacy(batch_data_dict, device)
+            pred = out.get("velocity_output")
+            if pred is None:
+                pred = out.get("vel_corr")
+            if torch.is_tensor(pred):
+                append_to_dict(output_dict, "velocity_output", pred.data.cpu().numpy())
 
-            for key, val in out.items():
-                if "_list" not in key:
-                    append_to_dict(output_dict, key, val.data.cpu().numpy())
-
-            for target_type, tval in batch_data_dict.items():
-                if 'roll' in target_type or 'reg_distance' in target_type or 'reg_tail' in target_type:
-                    append_to_dict(output_dict, target_type, tval)
+            for key in required_target_keys:
+                append_to_dict(output_dict, key, batch_data_dict[key])
 
         for key in output_dict.keys():
             output_dict[key] = np.concatenate(output_dict[key], axis=0)

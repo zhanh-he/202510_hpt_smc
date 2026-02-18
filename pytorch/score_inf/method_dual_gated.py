@@ -31,8 +31,7 @@ class _TinyConv(nn.Module):
 def _stack_cond(cond: CondIO, keys: List[str]) -> torch.Tensor:
     maps = []
     for k in keys:
-        v = getattr(cond, k, None)
-        maps.append(torch.zeros_like(cond.onset) if v is None else v)
+        maps.append(getattr(cond, k))
     return torch.stack(maps, dim=1)
 
 @register_score_inf("dual_gated")
@@ -81,7 +80,7 @@ class DualGated(nn.Module):
 
         vel_corr = torch.clamp(w * v_ac + (1.0 - w) * v_sc, 0.0, 1.0)
 
-        if self.mask_outside_onset:
+        if self.mask_outside_onset and cond.onset is not None:
             vel_corr = vel_corr * cond.onset
 
         return {"vel_corr": vel_corr, "delta": delta_ac, "debug": {"w": w, "v_ac": v_ac, "v_sc": v_sc}}

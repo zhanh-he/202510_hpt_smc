@@ -27,7 +27,6 @@ class ScoreInformedBiLSTM(nn.Module):
     ):
         super().__init__()
         assert mode in ("direct", "residual")
-        assert "onset" in cond_keys, "cond_keys must include 'onset' for masking/definition of velocity."
 
         self.in_feats = in_feats
         self.cond_keys = cond_keys
@@ -75,8 +74,7 @@ class ScoreInformedBiLSTM(nn.Module):
         raise KeyError(f"Unknown acoustic feature '{name}'")
 
     def _get_cond_map(self, cond: CondIO, name: str) -> torch.Tensor:
-        v = getattr(cond, name, None)
-        return torch.zeros_like(cond.onset) if v is None else v
+        return getattr(cond, name)
 
     def forward(self, acoustic: AcousticIO, cond: CondIO):
         feats = [self._get_feat(acoustic, k) for k in self.in_feats]
@@ -96,7 +94,7 @@ class ScoreInformedBiLSTM(nn.Module):
             vel_corr = torch.clamp(vel0 + self.alpha * torch.tanh(delta), 0.0, 1.0)
             logits = None
 
-        if self.mask_outside_onset:
+        if self.mask_outside_onset and cond.onset is not None:
             vel_corr = vel_corr * cond.onset
 
         return {"vel_corr": vel_corr, "delta": delta, "logits": logits}

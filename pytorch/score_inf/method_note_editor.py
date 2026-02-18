@@ -132,10 +132,7 @@ class NoteEventEditor(nn.Module):
 
             # cond features
             for k in self.use_cond_feats:
-                v = getattr(cond, k, None)
-                if v is None:
-                    cont_feats.append(torch.zeros_like(v0))
-                    continue
+                v = getattr(cond, k)
 
                 if k == "dur":
                     # turn dur roll into a normalized duration length

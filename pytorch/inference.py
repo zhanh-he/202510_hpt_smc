@@ -13,8 +13,7 @@ from hydra import compose, initialize
 from tqdm import tqdm
 
 from pytorch_utils import forward, forward_velo
-from amt_modules.model_registry import build_model
-from kim_ismir2024.model_FilmUnet import FiLMUNetPretrained
+from model.model_registry import build_model
 from feature_extractor import PsychoFeatureExtractor
 from utilities import (
     OnsetsFramesPostProcessor,
@@ -63,6 +62,8 @@ AUDIO_SCORE_FIELDS = [
     "ntot_cosine",
 ]
 
+_FILM_TYPES = {"filmunet_pretrained", "filmunet"}
+
 
 class TranscriptionBase:
     def __init__(self, checkpoint_path, cfg):
@@ -73,7 +74,9 @@ class TranscriptionBase:
         self.segment_samples = int(cfg.feature.sample_rate * cfg.feature.segment_seconds)
         self.segment_frames = int(round(cfg.feature.frames_per_second * cfg.feature.segment_seconds)) + 1
 
-        if cfg.model.name == "FiLMUNetPretrained":
+        self.is_film = cfg.model.type in _FILM_TYPES
+        if self.is_film:
+            from kim_ismir2024.model_FilmUnet import FiLMUNetPretrained
             self.model = FiLMUNetPretrained(cfg)
         else:
             self.model = build_model(cfg)
@@ -94,7 +97,7 @@ class TranscriptionBase:
         state_dict = _strip_prefix(state_dict, "module.")
 
         target_model = self.model
-        if isinstance(self.model, FiLMUNetPretrained):
+        if self.is_film:
             inner_state = state_dict
             if any(k.startswith("model.") for k in inner_state.keys()):
                 inner_state = {k.replace("model.", "", 1): v for k, v in inner_state.items()}
@@ -205,7 +208,7 @@ def _resolve_checkpoint(cfg, explicit_path: Optional[str]) -> Path:
             raise FileNotFoundError(f"Checkpoint override {ckpt} does not exist.")
         return ckpt
 
-    if cfg.model.name == "FiLMUNetPretrained":
+    if cfg.model.type in _FILM_TYPES:
         ckpt = Path(cfg.model.pretrained_checkpoint)
         if not ckpt.exists():
             raise FileNotFoundError(
@@ -269,7 +272,7 @@ def _predict_velocity_from_alignment(
     velocity_method: str,
 ):
     target_dict, _, _ = prepare_aux_rolls(cfg, midi_events_time, midi_events, duration)
-    if cfg.model.name in {"FiLMUNetPretrained", "FiLMUNet"}:
+    if cfg.model.type in _FILM_TYPES:
         input2 = target_dict["frame_roll"] if cfg.model.kim_condition == "frame" else None
         input3 = None
     else:
@@ -836,7 +839,7 @@ if __name__ == "__main__":
         "--overrides",
         nargs="*",
         default=[],
-        help="Optional Hydra overrides, e.g. exp.ckpt_iteration=100000 model.name=FiLMUNetPretrained",
+        help="Optional Hydra overrides, e.g. exp.ckpt_iteration=100000 model.type=filmunet_pretrained",
     )
     parser.add_argument(
         "--soundfont-path",

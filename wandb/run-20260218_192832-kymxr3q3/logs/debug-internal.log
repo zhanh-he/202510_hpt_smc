@@ -1,0 +1,15 @@
+{"time":"2026-02-18T19:28:32.340704902+11:00","level":"INFO","msg":"stream: starting","core version":"0.19.3","symlink path":"/media/mengh/SharedData/zhanh/202510_hpt_smc/wandb/run-20260218_192832-kymxr3q3/logs/debug-core.log"}
+{"time":"2026-02-18T19:28:32.446784936+11:00","level":"INFO","msg":"created new stream","id":"kymxr3q3"}
+{"time":"2026-02-18T19:28:32.446821606+11:00","level":"INFO","msg":"stream: started","id":"kymxr3q3"}
+{"time":"2026-02-18T19:28:32.447053384+11:00","level":"INFO","msg":"handler: started","stream_id":"kymxr3q3"}
+{"time":"2026-02-18T19:28:32.447207777+11:00","level":"INFO","msg":"writer: Do: started","stream_id":"kymxr3q3"}
+{"time":"2026-02-18T19:28:32.447520388+11:00","level":"INFO","msg":"sender: started","stream_id":"kymxr3q3"}
+{"time":"2026-02-18T19:28:32.955863215+11:00","level":"INFO","msg":"Starting system monitor"}
+{"time":"2026-02-18T19:28:41.821209102+11:00","level":"INFO","msg":"stream: closing","id":"kymxr3q3"}
+{"time":"2026-02-18T19:28:41.821242144+11:00","level":"INFO","msg":"Stopping system monitor"}
+{"time":"2026-02-18T19:28:41.82155678+11:00","level":"INFO","msg":"Stopped system monitor"}
+{"time":"2026-02-18T19:28:42.713149483+11:00","level":"INFO","msg":"fileTransfer: Close: file transfer manager closed"}
+{"time":"2026-02-18T19:28:42.984564953+11:00","level":"INFO","msg":"handler: closed","stream_id":"kymxr3q3"}
+{"time":"2026-02-18T19:28:42.984603195+11:00","level":"INFO","msg":"sender: closed","stream_id":"kymxr3q3"}
+{"time":"2026-02-18T19:28:42.984600841+11:00","level":"INFO","msg":"writer: Close: closed","stream_id":"kymxr3q3"}
+{"time":"2026-02-18T19:28:42.984794457+11:00","level":"INFO","msg":"stream: closed","id":"kymxr3q3"}

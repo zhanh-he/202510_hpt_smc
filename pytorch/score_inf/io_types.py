@@ -16,11 +16,11 @@ class AcousticIO:
 class CondIO:
     """
     GT conditioning only (no pedal, no dur):
-      onset:   (B,T,88) 0/1 (velocity defined at onset)
+      onset:   (B,T,88) 0/1 (optional)
       frame:   (B,T,88) 0/1
       exframe: (B,T,88) 0/1
     """
-    onset: Tensor
+    onset: Optional[Tensor] = None
     frame: Optional[Tensor] = None
     exframe: Optional[Tensor] = None
     extra: Dict[str, Tensor] = field(default_factory=dict)
@@ -33,10 +33,8 @@ def dict_to_acoustic(d: Dict) -> AcousticIO:
     )
 
 def dict_to_cond(d: Dict) -> CondIO:
-    if "onset" not in d:
-        raise KeyError("cond dict must include 'onset' (B,T,88).")
     return CondIO(
-        onset=d["onset"],
+        onset=d.get("onset", None),
         frame=d.get("frame", None),
         exframe=d.get("exframe", None),
         extra={k: v for k, v in d.items() if k not in {"onset", "frame", "exframe"}},

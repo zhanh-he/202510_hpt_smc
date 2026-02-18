@@ -1,0 +1,9 @@
+{"time":"2026-02-18T21:04:26.12319467+11:00","level":"INFO","msg":"stream: starting","core version":"0.19.3","symlink path":"/media/mengh/SharedData/zhanh/202510_hpt_smc/wandb/run-20260218_210425-gn5qfc11/logs/debug-core.log"}
+{"time":"2026-02-18T21:04:26.226227076+11:00","level":"INFO","msg":"created new stream","id":"gn5qfc11"}
+{"time":"2026-02-18T21:04:26.226267462+11:00","level":"INFO","msg":"stream: started","id":"gn5qfc11"}
+{"time":"2026-02-18T21:04:26.226292079+11:00","level":"INFO","msg":"writer: Do: started","stream_id":"gn5qfc11"}
+{"time":"2026-02-18T21:04:26.22631372+11:00","level":"INFO","msg":"handler: started","stream_id":"gn5qfc11"}
+{"time":"2026-02-18T21:04:26.226298762+11:00","level":"INFO","msg":"sender: started","stream_id":"gn5qfc11"}
+{"time":"2026-02-18T21:04:26.767472659+11:00","level":"INFO","msg":"Starting system monitor"}
+{"time":"2026-02-18T21:29:49.143475578+11:00","level":"INFO","msg":"api: retrying HTTP error","status":502,"url":"https://api.wandb.ai/graphql","body":"\n<html><head>\n<meta http-equiv=\"content-type\" content=\"text/html;charset=utf-8\">\n<title>502 Server Error</title>\n</head>\n<body text=#000000 bgcolor=#ffffff>\n<h1>Error: Server Error</h1>\n<h2>The server encountered a temporary error and could not complete your request.<p>Please try again in 30 seconds.</h2>\n<h2></h2>\n</body></html>\n"}
+{"time":"2026-02-18T21:44:23.478463098+11:00","level":"INFO","msg":"api: retrying HTTP error","status":502,"url":"https://api.wandb.ai/graphql","body":"\n<html><head>\n<meta http-equiv=\"content-type\" content=\"text/html;charset=utf-8\">\n<title>502 Server Error</title>\n</head>\n<body text=#000000 bgcolor=#ffffff>\n<h1>Error: Server Error</h1>\n<h2>The server encountered a temporary error and could not complete your request.<p>Please try again in 30 seconds.</h2>\n<h2></h2>\n</body></html>\n"}

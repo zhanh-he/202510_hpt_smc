@@ -44,7 +44,6 @@ ln -s $DATA_SRC $DATA_VIEW
 #############################################
 # Loss ablation on best model (set these three manually after model-selection):
 BEST_ADAPTER="hpt"
-BEST_MODEL_NAME="Single_Velocity_HPT"
 BEST_METHOD="scrr"
 
 LOSS_VARIANTS=(
@@ -57,9 +56,27 @@ LOSS_VARIANTS=(
 
 LOSS_VARIANT=${LOSS_VARIANTS[$SLURM_ARRAY_TASK_ID]}
 echo "Adapter      : $BEST_ADAPTER"
-echo "Model        : $BEST_MODEL_NAME"
 echo "Method       : $BEST_METHOD"
 echo "Loss Variant : $LOSS_VARIANT"
+
+case "$BEST_METHOD" in
+  direct_output)
+    INPUT2=null
+    INPUT3=null
+    ;;
+  note_editor)
+    INPUT2=onset
+    INPUT3=frame
+    ;;
+  scrr|dual_gated|bilstm)
+    INPUT2=onset
+    INPUT3=frame
+    ;;
+  *)
+    echo "Unknown method: $BEST_METHOD"
+    exit 1
+    ;;
+esac
 
 case "$LOSS_VARIANT" in
   score_inf_custom_huber_base)
@@ -125,10 +142,9 @@ esac
 
 python pytorch/train_score_inf.py \
   exp.workspace="$WORKSPACE_DIR" \
-  model.name="$BEST_MODEL_NAME" \
-  model.input2=null \
-  model.input3=null \
-  adapter.type="$BEST_ADAPTER" \
+  model.input2="$INPUT2" \
+  model.input3="$INPUT3" \
+  model.type="$BEST_ADAPTER" \
   score_informed.method="$BEST_METHOD" \
   "${LOSS_ARGS[@]}"
 

@@ -22,20 +22,18 @@ from utilities import create_folder, create_logging, get_model_name
 from losses import get_loss_func
 from evaluate import SegmentEvaluator
 
-from amt_modules import build_adapter
+from model import build_adapter
 from score_inf import build_score_inf
 from score_inf.wrapper import ScoreInfWrapper
 
 
-def init_wandb(cfg, wandb_run_id: Optional[str]):
+def init_wandb(cfg):
     """Initialize WandB for experiment tracking if configured."""
     if not hasattr(cfg, "wandb"):
         return
     wandb.init(
         project=cfg.wandb.project,
         name=cfg.wandb.name,
-        id=wandb_run_id,
-        resume="must" if wandb_run_id else "allow",
         config=OmegaConf.to_container(cfg, resolve=True),
     )
 
@@ -101,16 +99,19 @@ def _write_training_stats(cfg, checkpoints_dir: str, model_name: str) -> None:
     file_name = getattr(cfg.wandb, "name", None) if hasattr(cfg, "wandb") else None
     file_name = file_name or model_name
 
-    condition_inputs = [getattr(cfg.model, "input2", None), getattr(cfg.model, "input3", None)]
+    condition_inputs = [cfg.model.input2, cfg.model.input3]
     condition_selected = [c for c in condition_inputs if c]
     condition_check = bool(condition_selected)
     condition_type = "+".join(condition_selected) if condition_selected else "default"
-    condition_net = getattr(cfg.model, "condition_net", "N/A")
+    condition_net = "N/A"
 
     score_cfg = getattr(cfg, "score_informed", None)
     score_method = getattr(score_cfg, "method", "direct_output") if score_cfg is not None else "direct_output"
-    freeze_base = getattr(score_cfg, "freeze_base", False) if score_cfg is not None else False
-    base_ckpt = getattr(score_cfg, "base_checkpoint", "") if score_cfg is not None else ""
+    train_mode = getattr(score_cfg, "train_mode", "joint") if score_cfg is not None else "joint"
+    switch_iteration = getattr(score_cfg, "switch_iteration", 100000) if score_cfg is not None else 100000
+    if score_method == "direct_output":
+        condition_check = False
+        condition_type = "ignored"
 
     lines = [
         f"file name           :{file_name}",
@@ -125,107 +126,101 @@ def _write_training_stats(cfg, checkpoints_dir: str, model_name: str) -> None:
         f"frames_per_second   :{cfg.feature.frames_per_second}",
         f"feature type        :{cfg.feature.audio_feature}",
         f"score_inf_method    :{score_method}",
-        f"freeze_base         :{freeze_base}",
-        f"base_checkpoint     :{base_ckpt}",
+        f"train_mode          :{train_mode}",
+        f"switch_iteration    :{switch_iteration}",
     ]
 
     with open(stats_path, "w") as f:
         f.write("\n".join(lines))
 
-
-def _strip_prefix(state: Dict[str, torch.Tensor], prefix: str) -> Dict[str, torch.Tensor]:
-    keys = list(state.keys())
-    if keys and all(k.startswith(prefix) for k in keys):
-        return {k[len(prefix):]: v for k, v in state.items()}
-    return state
-
-
-def _load_state_dict(ckpt_path: str, device: torch.device) -> Dict[str, torch.Tensor]:
-    checkpoint = torch.load(ckpt_path, map_location=device)
-    if isinstance(checkpoint, dict):
-        if "model" in checkpoint:
-            checkpoint = checkpoint["model"]
-        elif "state_dict" in checkpoint:
-            checkpoint = checkpoint["state_dict"]
-    if not isinstance(checkpoint, dict):
-        raise RuntimeError(f"Unsupported checkpoint format in {ckpt_path}")
-
-    checkpoint = _strip_prefix(checkpoint, "module.")
-    return checkpoint
-
-
-def _resolve_base_checkpoint(cfg) -> Optional[str]:
-    score_cfg = getattr(cfg, "score_informed", None)
-    if score_cfg is None:
-        return None
-
-    base_ckpt = getattr(score_cfg, "base_checkpoint", "")
-    if base_ckpt:
-        return base_ckpt
-
-    base_iter = getattr(score_cfg, "base_iteration", "")
-    if base_iter:
-        model_name = get_model_name(cfg)
-        return os.path.join(cfg.exp.workspace, "checkpoints", model_name, f"{base_iter}_iterations.pth")
-
-    model_ckpt = getattr(cfg.model, "base_checkpoint", "")
-    if model_ckpt:
-        return model_ckpt
-
-    legacy_ckpt = getattr(cfg.model, "pretrained_checkpoint", "")
-    if legacy_ckpt:
-        return legacy_ckpt
-
-    return None
-
-
-def _normalize_adapter_cfg(cfg) -> Dict[str, Any]:
-    adapter_cfg = getattr(cfg, "adapter", None)
-    if adapter_cfg is None:
-        return {"type": "hpt", "params": {}}
-
-    if OmegaConf.is_config(adapter_cfg):
-        adapter_cfg = OmegaConf.to_container(adapter_cfg, resolve=True)
-
-    if not isinstance(adapter_cfg, dict):
-        return {"type": "hpt", "params": {}}
-
-    if "type" in adapter_cfg:
-        params = adapter_cfg.get("params", {}) or {}
-        return {"type": adapter_cfg["type"], "params": params}
-
-    if "keymap" in adapter_cfg or "transpose" in adapter_cfg:
-        params = {
-            "keymap": adapter_cfg.get("keymap", {}),
-            "transpose": adapter_cfg.get("transpose", {}) or {},
-            "keep_extra": adapter_cfg.get("keep_extra", True),
-        }
-        return {"type": "keymap", "params": params}
-
-    return {"type": "hpt", "params": {}}
-
-
-def _inject_cond_from_input23(cfg, method: str, params: Dict[str, Any]) -> Dict[str, Any]:
+def _select_input_conditions(cfg) -> list:
     cond_selected = []
     for key in [cfg.model.input2, cfg.model.input3]:
         if key and key not in cond_selected:
             cond_selected.append(key)
+    return cond_selected
 
-    if not cond_selected:
-        return params
 
+def _resolve_score_inf_conditioning(cfg, method: str, params: Dict[str, Any]) -> Tuple[Dict[str, Any], list]:
+    cond_selected = _select_input_conditions(cfg)
     merged = dict(params)
-    if method in ("scrr", "dual_gated", "bilstm"):
-        cond_keys = list(cond_selected)
-        if "onset" not in cond_keys:
-            cond_keys = ["onset"] + cond_keys
-        merged["cond_keys"] = cond_keys
-    elif method == "note_editor":
-        merged["use_cond_feats"] = [k for k in cond_selected if k != "onset"]
-    return merged
+
+    if method == "direct_output":
+        return merged, []
+
+    if method == "note_editor":
+        use_cond_feats = [cfg.model.input3] if cfg.model.input3 else []
+        merged["use_cond_feats"] = use_cond_feats
+        cond_keys = ["onset"] + use_cond_feats
+        return merged, cond_keys
+
+    if method in ("bilstm", "scrr", "dual_gated"):
+        merged["cond_keys"] = cond_selected
+        return merged, cond_selected
+
+    return merged, cond_selected
 
 
-def build_dataloaders(cfg, resume_sampler_state=None):
+def _required_target_rolls(loss_type: str) -> list:
+    if loss_type in ("velocity_bce", "velocity_mse"):
+        return ["velocity_roll", "onset_roll"]
+    if loss_type == "kim_bce_l1":
+        return ["velocity_roll", "onset_roll", "frame_roll"]
+    if loss_type == "score_inf_custom":
+        return ["velocity_roll", "onset_roll"]
+    raise ValueError(f"Unknown loss_type: {loss_type}")
+
+
+def _resolve_train_schedule(cfg, score_cfg) -> Tuple[str, int]:
+    if score_cfg is None:
+        return "joint", 100000
+    if isinstance(score_cfg, dict):
+        mode = score_cfg.get("train_mode", "joint")
+        switch_iteration = int(score_cfg.get("switch_iteration", 100000))
+    else:
+        mode = getattr(score_cfg, "train_mode", "joint")
+        switch_iteration = int(getattr(score_cfg, "switch_iteration", 100000))
+    return mode, switch_iteration
+
+
+def _phase_at_iteration(train_mode: str, iteration: int, switch_iteration: int) -> str:
+    if train_mode == "joint":
+        return "joint"
+    if iteration < switch_iteration:
+        return "adapter_only"
+    if train_mode == "adapter_then_score":
+        return "score_only"
+    if train_mode == "adapter_then_joint":
+        return "joint"
+    raise ValueError(f"Unknown score_informed.train_mode: {train_mode}")
+
+
+def _apply_train_phase(model: ScoreInfWrapper, phase: str) -> None:
+    if phase == "adapter_only":
+        model.freeze_base = False
+        for p in model.base_adapter.parameters():
+            p.requires_grad = True
+        for p in model.post.parameters():
+            p.requires_grad = False
+        return
+    if phase == "score_only":
+        model.freeze_base = True
+        for p in model.base_adapter.parameters():
+            p.requires_grad = False
+        for p in model.post.parameters():
+            p.requires_grad = True
+        return
+    if phase == "joint":
+        model.freeze_base = False
+        for p in model.base_adapter.parameters():
+            p.requires_grad = True
+        for p in model.post.parameters():
+            p.requires_grad = True
+        return
+    raise ValueError(f"Unknown phase: {phase}")
+
+
+def build_dataloaders(cfg):
     def get_sampler(cfg, purpose: str, split: str, is_eval: Optional[str] = None):
         sampler_mapping = {
             "train": Sampler,
@@ -239,8 +234,6 @@ def build_dataloaders(cfg, resume_sampler_state=None):
     }
     train_dataset = dataset_classes[cfg.dataset.train_set](cfg)
     train_sampler = get_sampler(cfg, purpose="train", split="train", is_eval=None)
-    if resume_sampler_state is not None:
-        train_sampler.load_state_dict(resume_sampler_state)
     train_loader = torch.utils.data.DataLoader(
         dataset=train_dataset,
         batch_sampler=train_sampler,
@@ -282,58 +275,46 @@ def build_dataloaders(cfg, resume_sampler_state=None):
         "smd": eval_smd_loader,
         "maps": eval_maps_loader,
     }
-    return train_loader, train_sampler, eval_loaders
+    return train_loader, eval_loaders
 
 
-def _prepare_batch(batch_data_dict, device: torch.device) -> Tuple[torch.Tensor, Dict[str, torch.Tensor], Dict[str, torch.Tensor]]:
-    batch_torch = {k: move_data_to_device(v, device) for k, v in batch_data_dict.items()}
-    audio = batch_torch["waveform"]
-    cond = {
-        "onset": batch_torch["onset_roll"],
-        "frame": batch_torch.get("frame_roll"),
-        "exframe": batch_torch.get("exframe_roll"),
-    }
+def _prepare_batch(
+    batch_data_dict,
+    device: torch.device,
+    cond_keys: list,
+    target_rolls: list,
+) -> Tuple[torch.Tensor, Dict[str, torch.Tensor], Dict[str, torch.Tensor]]:
+    audio = move_data_to_device(batch_data_dict["waveform"], device)
+    cond = {k: move_data_to_device(batch_data_dict[f"{k}_roll"], device) for k in cond_keys}
+    batch_torch = {k: move_data_to_device(batch_data_dict[k], device) for k in target_rolls}
     return audio, cond, batch_torch
 
 
 def train(cfg):
     device = torch.device("cuda") if cfg.exp.cuda and torch.cuda.is_available() else torch.device("cpu")
 
-    adapter_cfg = _normalize_adapter_cfg(cfg)
-    adapter = build_adapter(adapter_cfg, model=None, cfg=cfg).to(device)
-
-    base_ckpt = _resolve_base_checkpoint(cfg)
-    if base_ckpt:
-        _load_base_checkpoint_into_adapter(adapter, base_ckpt, device=device)
+    model_cfg = {"type": cfg.model.type, "params": cfg.model.params}
+    adapter = build_adapter(model_cfg, model=None, cfg=cfg).to(device)
 
     score_cfg = getattr(cfg, "score_informed", None)
     if score_cfg is None:
         method = "direct_output"
         params = {}
-        freeze_base = False
     else:
         if OmegaConf.is_config(score_cfg):
             score_cfg = OmegaConf.to_container(score_cfg, resolve=True)
         if isinstance(score_cfg, dict):
             method = score_cfg.get("method", "direct_output") or "direct_output"
             params = score_cfg.get("params", {}) or {}
-            freeze_base = bool(score_cfg.get("freeze_base", False))
         else:
             method = getattr(score_cfg, "method", "direct_output") or "direct_output"
             params = getattr(score_cfg, "params", {}) or {}
-            freeze_base = bool(getattr(score_cfg, "freeze_base", False))
 
-    params = _inject_cond_from_input23(cfg, method, params)
+    params, cond_keys = _resolve_score_inf_conditioning(cfg, method, params)
+    target_rolls = _required_target_rolls(cfg.loss.loss_type)
+    train_mode, switch_iteration = _resolve_train_schedule(cfg, score_cfg)
     post = build_score_inf(method, params).to(device)
-
-    if freeze_base:
-        base_module = getattr(adapter, "model", None)
-        if base_module is None:
-            raise AttributeError("freeze_base=True but adapter has no '.model' to freeze.")
-        for p in base_module.parameters():
-            p.requires_grad = False
-
-    model = ScoreInfWrapper(adapter, post, freeze_base=freeze_base).to(device)
+    model = ScoreInfWrapper(adapter, post, freeze_base=False).to(device)
 
     # Paths for results
     model_name = get_model_name(cfg)
@@ -349,42 +330,18 @@ def train(cfg):
     logging.info(cfg)
     logging.info(f"Using {device}.")
 
-    # Resume training if applicable
     start_iteration = 0
-    wandb_run_id = None
-    resume_sampler_state = None
-    resume_optimizer_state = None
-    if cfg.exp.resume_iteration > 0:
-        state_path = os.path.join(checkpoints_dir, f"{cfg.exp.resume_iteration}_iterations.pth")
-        resume_meta_path = os.path.join(checkpoints_dir, f"{cfg.exp.resume_iteration}_resume.pth")
-        if os.path.exists(state_path):
-            logging.info(f"Loading checkpoint {state_path} from iteration {cfg.exp.resume_iteration}")
-            model_state = torch.load(state_path, map_location=device)
-            if isinstance(model_state, dict) and "model" in model_state and "optimizer" in model_state:
-                checkpoint = model_state
-                model.load_state_dict(checkpoint["model"], strict=True)
-                start_iteration = checkpoint["iteration"]
-                wandb_run_id = checkpoint.get("wandb_run_id")
-                resume_sampler_state = checkpoint.get("sampler")
-                resume_optimizer_state = checkpoint.get("optimizer")
-            else:
-                if not os.path.exists(resume_meta_path):
-                    raise FileNotFoundError(f"Missing resume metadata: {resume_meta_path}")
-                checkpoint = torch.load(resume_meta_path, map_location=device)
-                model.load_state_dict(model_state, strict=True)
-                start_iteration = checkpoint["iteration"]
-                wandb_run_id = checkpoint.get("wandb_run_id")
-                resume_sampler_state = checkpoint.get("sampler")
-                resume_optimizer_state = checkpoint.get("optimizer")
-        else:
-            logging.warning(f"Checkpoint {state_path} not found. Starting from scratch.")
+    init_phase = _phase_at_iteration(train_mode, start_iteration, switch_iteration)
+    _apply_train_phase(model, init_phase)
 
     # Match legacy seed tweak
-    # if cfg.model.name == "Single_Velocity_HPT":
+    # if cfg.model.type == "hpt":
     #     cfg.exp.random_seed = 12
 
-    # Build data loaders (use sampler state if resuming)
-    train_loader, train_sampler, eval_loaders = build_dataloaders(cfg, resume_sampler_state)
+    train_loader, eval_loaders = build_dataloaders(cfg)
+    # for split, loader in eval_loaders.items():
+    #     max_eval_iters = getattr(loader.batch_sampler, "max_evaluate_iteration", None)
+    #     logging.info(f"Fast eval sampler [{split}] max_evaluate_iteration={max_eval_iters}")
 
     # Optimizer
     optim_cfg = getattr(cfg, "optim", None)
@@ -399,21 +356,13 @@ def train(cfg):
         lr = float(getattr(cfg.exp, "learning_rate", 1e-4))
         wd = float(getattr(cfg.exp, "weight_decay", 0.0))
 
-    params = [p for p in model.parameters() if p.requires_grad]
-    if len(params) == 0:
-        raise ValueError(
-            "No trainable parameters found. Check score_informed.freeze_base and selected score_informed.method."
-        )
+    params = list(model.parameters())
     if opt_name == "adamw":
         optimizer = AdamW(params, lr=lr, weight_decay=wd)
     else:
         optimizer = Adam(params, lr=lr, weight_decay=wd)
 
-    if resume_optimizer_state is not None:
-        optimizer.load_state_dict(resume_optimizer_state)
-
-    # Initialize WandB after potentially loading run_id
-    init_wandb(cfg, wandb_run_id)
+    init_wandb(cfg)
 
     # GPU info
     gpu_count = torch.cuda.device_count()
@@ -432,15 +381,22 @@ def train(cfg):
 
     evaluator = SegmentEvaluator(model, cfg, score_inf=True)
     loss_fn = get_loss_func(cfg=cfg)
+    current_phase = None
 
     for batch_data_dict in train_loader:
+        phase = _phase_at_iteration(train_mode, iteration, switch_iteration)
+        if phase != current_phase:
+            _apply_train_phase(model, phase)
+            current_phase = phase
+            logging.info(f"Train phase switched to: {phase} at iteration {iteration}")
+
         if cfg.exp.decay:
-            if iteration % cfg.exp.reduce_iteration == 0 and iteration != cfg.exp.resume_iteration:
+            if iteration % cfg.exp.reduce_iteration == 0 and iteration != 0:
                 for param_group in optimizer.param_groups:
                     param_group["lr"] *= 0.9
 
         model.train()
-        audio, cond, batch_torch = _prepare_batch(batch_data_dict, device)
+        audio, cond, batch_torch = _prepare_batch(batch_data_dict, device, cond_keys, target_rolls)
         out = model(audio, cond)
         loss = loss_fn(cfg, out, batch_torch, cond_dict=cond)
 
@@ -496,18 +452,8 @@ def train(cfg):
             train_bgn_time = time.time()
 
             checkpoint_path = os.path.join(checkpoints_dir, f"{iteration}_iterations.pth")
-            resume_meta_path = os.path.join(checkpoints_dir, f"{iteration}_resume.pth")
             torch.save(model.state_dict(), checkpoint_path)
-            resume_payload = {
-                "iteration": iteration,
-                "sampler": train_sampler.state_dict(),
-                "optimizer": optimizer.state_dict(),
-                "wandb_run_id": wandb.run.id if wandb.run is not None else None,
-            }
-            torch.save(resume_payload, resume_meta_path)
-            logging.info(
-                f"Model saved to {checkpoint_path} (state) and {resume_meta_path} (resume)"
-            )
+            logging.info(f"Model saved to {checkpoint_path}")
 
         if iteration == cfg.exp.total_iteration:
             break

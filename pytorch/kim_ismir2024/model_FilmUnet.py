@@ -1,4 +1,5 @@
 import logging
+import importlib.util
 import sys
 import types
 from pathlib import Path
@@ -10,8 +11,6 @@ import torch.nn as nn
 # Inject a lightweight torchlibrosa shim so the original FiLM code can import it.
 _VENDOR_ROOT = Path(__file__).resolve().parent
 _AUDIO_SRC = _VENDOR_ROOT / "src"
-if not _AUDIO_SRC.exists():
-    raise FileNotFoundError(f"Missing vendored FiLM sources at {_AUDIO_SRC}")
 sys.path.insert(0, str(_AUDIO_SRC))
 import audio_transforms  # type: ignore  # noqa: E402
 
@@ -23,11 +22,21 @@ sys.modules["torchlibrosa"] = torchlibrosa_mod
 sys.modules["torchlibrosa.stft"] = torchlibrosa_stft_mod
 
 # Reuse the untouched FiLM codebase.
-_KIM_SRC = _AUDIO_SRC
-sys.path.insert(0, str(_KIM_SRC))
+_config_spec = importlib.util.spec_from_file_location(
+    "kim_ismir2024_src_config",
+    _AUDIO_SRC / "config.py",
+)
+kim_config = importlib.util.module_from_spec(_config_spec)
+_config_spec.loader.exec_module(kim_config)
 
-import config as kim_config  # type: ignore  # noqa: E402
-from model import ScoreInformedMidiVelocityEstimator  # type: ignore  # noqa: E402
+sys.modules["config"] = kim_config
+_model_spec = importlib.util.spec_from_file_location(
+    "kim_ismir2024_src_model",
+    _AUDIO_SRC / "model.py",
+)
+_kim_model = importlib.util.module_from_spec(_model_spec)
+_model_spec.loader.exec_module(_kim_model)
+ScoreInformedMidiVelocityEstimator = _kim_model.ScoreInformedMidiVelocityEstimator
 
 
 class FiLMUNetPretrained(nn.Module):

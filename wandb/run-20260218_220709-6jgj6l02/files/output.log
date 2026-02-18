@@ -1,0 +1,5 @@
+root        : INFO     Number of GPUs available: 1
+root        : INFO     Train phase switched to: joint at iteration 0
+0 tensor(0.3755, device='cuda:0', grad_fn=<AddBackward0>)
+root        : INFO     ------------------------------------
+root        : INFO     Iteration: 0/120000

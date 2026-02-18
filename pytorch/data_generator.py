@@ -18,7 +18,6 @@ from utilities import (
     get_filename,
     int16_to_float32,
     pad_truncate_sequence,
-    plot_waveform_midi_targets,
     read_metadata,
     read_midi,
     traverse_folder,
@@ -116,11 +115,6 @@ class Maestro_Dataset(object):
         # Add onset-excluded frame roll
         data_dict['exframe_roll'] = target_dict['frame_roll'] * (1 - target_dict['onset_roll'])
 
-        # Debugging
-        if self.cfg.exp.debug:
-            plot_waveform_midi_targets(data_dict, start_time, note_events)
-            exit()
-
         return data_dict
 
 
@@ -187,11 +181,6 @@ class MAPS_Dataset(object):
         # Add onset-excluded frame roll
         data_dict['exframe_roll'] = target_dict['frame_roll'] * (1 - target_dict['onset_roll'])
 
-        # Debugging
-        if self.cfg.exp.debug:
-            plot_waveform_midi_targets(data_dict, start_time, note_events)
-            exit()
-
         return data_dict
 
 
@@ -257,11 +246,6 @@ class SMD_Dataset(object):
         data_dict.update(target_dict)
         # Add onset-excluded frame roll
         data_dict['exframe_roll'] = target_dict['frame_roll'] * (1 - target_dict['onset_roll'])
-
-        # Debugging
-        if self.cfg.exp.debug:
-            plot_waveform_midi_targets(data_dict, start_time, note_events)
-            exit()
 
         return data_dict
 
