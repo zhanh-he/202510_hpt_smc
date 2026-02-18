@@ -113,7 +113,7 @@ def log_velocity_rolls(cfg, iteration, batch_output_dict, batch_data_dict):
     )
 
 
-    fig, axes = plt.subplots(2, 2, figsize=(20, 4))
+    fig, axes = plt.subplots(2, 2, figsize=(10, 8))
     specs = [
         ("Ground Truth", target_img),
         ("Prediction", pred_vis),
