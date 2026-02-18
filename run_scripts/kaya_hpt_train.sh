@@ -1,90 +1,91 @@
 #!/bin/bash
-#SBATCH --job-name=hpt36h
-#SBATCH --output=hpt_progress_%A_%a.log
-#SBATCH --error=hpt_error_%A_%a.log
+#SBATCH --job-name=scoreinf_ablate
+#SBATCH --output=scoreinf_progress_%A_%a.log
+#SBATCH --error=scoreinf_error_%A_%a.log
 #SBATCH --partition=gpu
 #SBATCH --ntasks=1
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=32G
 #SBATCH --time=72:00:00
-#SBATCH --array=0-11
+#SBATCH --array=0-59
 #SBATCH --mail-type=END,FAIL
 #SBATCH --mail-user=zhanh.he@research.uwa.edu.au
 
-
-# Load any required modules (if needed) - module load cuda/11.8 gcc/9.4.0
 module load Anaconda3/2024.06 cuda/11.8 gcc/11.5.0
 module list
 source activate bark_env #hpt_mamba
 
-# Print some useful information, Note: SLURM_JOBID is a unique number for every job.
 echo "Running on host: $(hostname)"
 echo "Using GPU: $CUDA_VISIBLE_DEVICES"
 echo "SLURM ID: $SLURM_ARRAY_ID $SLURM_ARRAY_TASK_ID"
 
-#  These are generic variables
 FOLDER_NAME=${SLURM_ARRAY_JOB_ID}_${SLURM_ARRAY_TASK_ID}
-EXECUTABLE=$HOME/202510_hpt
-SCRATCH=$MYSCRATCH/202510_hpt/$FOLDER_NAME
-RESULTS=$MYGROUP/202510_hpt_results/$FOLDER_NAME 
+PROJECT_NAME=202510_hpt_smc
+EXECUTABLE=$HOME/${PROJECT_NAME}
+SCRATCH=$MYSCRATCH/${PROJECT_NAME}/$FOLDER_NAME
+RESULTS=$MYGROUP/${PROJECT_NAME}_results/$FOLDER_NAME
 
-# Creates a unique directory in the SCRATCH directory for this job to run in.
 mkdir -p $SCRATCH $RESULTS
 echo SCRATCH is $SCRATCH
 echo RESULTS dir is $RESULTS
 
-# Copy input files to $SCRATCH, then change directory to $SCRATCH
 echo "Copy path $EXECUTABLE to $SCRATCH"
 cp -r $EXECUTABLE $SCRATCH
-cd $SCRATCH/202510_hpt
+cd $SCRATCH/$PROJECT_NAME
 
-# link the dataset to real data folder
-# echo "MYSCRATCH path: $MYSCRATCH/workspaces"
-# ln -s $MYSCRATCH/workspaces/hdf5s $SCRATCH/202510_hpt/workspaces/hdf5s
+WORKSPACE_DIR=$SCRATCH/$PROJECT_NAME/workspaces
+mkdir -p $WORKSPACE_DIR
+
 DATA_SRC=$MYSCRATCH/202510_hpt_data/workspaces/hdf5s
-DATA_VIEW=$SCRATCH/202510_hpt/workspaces/hdf5s
+DATA_VIEW=$WORKSPACE_DIR/hdf5s
 ln -s $DATA_SRC $DATA_VIEW
 
 #############################################
-# Run your script with passed arguments
+# Adapter/method/loss ablation:
+# 3 adapters x 5 methods x 4 losses = 60 array jobs.
+ADAPTERS=("hpt" "hppnet" "dynest")
+METHODS=("direct_output" "scrr" "dual_gated" "note_editor" "bilstm")
+LOSSES=("velocity_bce" "velocity_mse" "kim_bce_l1" "score_inf_custom")
 
-declare -a EXPERIMENTS=(
-"python pytorch/train_iter.py feature.audio_feature='logmel' model.name='Single_Velocity_HPT'"
-"python pytorch/train_iter.py feature.audio_feature='logmel' model.name='Single_Velocity_HPT' exp.loss_type='kim_bce_l1' wandb.comment='kimloss'"
+N_METHODS=${#METHODS[@]}
+N_LOSSES=${#LOSSES[@]}
+N_METHOD_LOSS=$((N_METHODS * N_LOSSES))
 
-"python pytorch/train_iter.py feature.audio_feature='logmel' model.name='Dual_Velocity_HPT' model.input2='frame'"
-"python pytorch/train_iter.py feature.audio_feature='logmel' model.name='Dual_Velocity_HPT' model.input2='frame' exp.loss_type='kim_bce_l1' wandb.comment='kimloss'"
+ADAPTER_IDX=$((SLURM_ARRAY_TASK_ID / N_METHOD_LOSS))
+REM=$((SLURM_ARRAY_TASK_ID % N_METHOD_LOSS))
+METHOD_IDX=$((REM / N_LOSSES))
+LOSS_IDX=$((REM % N_LOSSES))
 
-"python pytorch/train_iter.py feature.audio_feature='logmel' model.name='DynestAudioCNN'"
-"python pytorch/train_iter.py feature.audio_feature='logmel' model.name='DynestAudioCNN' exp.loss_type='kim_bce_l1' wandb.comment='kimloss'"
+ADAPTER=${ADAPTERS[$ADAPTER_IDX]}
+METHOD=${METHODS[$METHOD_IDX]}
+LOSS_TYPE=${LOSSES[$LOSS_IDX]}
 
-"python pytorch/train_iter.py feature.audio_feature='logmel' model.name='HPPNet_SP'"
-"python pytorch/train_iter.py feature.audio_feature='logmel' model.name='HPPNet_SP' exp.loss_type='kim_bce_l1' wandb.comment='kimloss'"
+case "$ADAPTER" in
+  hpt) MODEL_NAME="Single_Velocity_HPT" ;;
+  hppnet) MODEL_NAME="HPPNet_SP" ;;
+  dynest) MODEL_NAME="DynestAudioCNN" ;;
+  *) echo "Unknown adapter: $ADAPTER"; exit 1 ;;
+esac
 
-"python pytorch/train_iter.py model.name='HPPNet_SP' feature.audio_feature='cqt' feature.sample_rate=16000 feature.frames_per_second=50 feature.hop_seconds=1.0 feature.segment_seconds=20 exp.batch_size=3"
-"python pytorch/train_iter.py model.name='HPPNet_SP' feature.audio_feature='cqt' feature.sample_rate=16000 feature.frames_per_second=50 feature.hop_seconds=1.0 feature.segment_seconds=20 exp.batch_size=3 exp.loss_type='kim_bce_l1' wandb.comment='kimloss'"
+echo "Adapter: $ADAPTER"
+echo "Model  : $MODEL_NAME"
+echo "Method : $METHOD"
+echo "Loss   : $LOSS_TYPE"
 
-"python pytorch/train_iter.py feature.audio_feature='logmel' model.name='Dual_Velocity_HPT' model.input2='onset'"
-"python pytorch/train_iter.py feature.audio_feature='logmel' model.name='Dual_Velocity_HPT' model.input2='onset' exp.loss_type='kim_bce_l1' wandb.comment='kimloss'"
-
-# "python pytorch/train_iter.py feature.audio_feature='logmel' model.name='Triple_Velocity_HPT' model.input2='onset' model.input3='exframe'"
-# "python pytorch/train_iter.py feature.audio_feature='logmel' model.name='Triple_Velocity_HPT' model.input2='onset' model.input3='exframe' exp.loss_type='kim_bce_l1' wandb.comment='kimloss'"
-# "python pytorch/train_iter.py feature.audio_feature='logmel' model.name='Dual_Velocity_HPT' model.input2='frame'"
-# "python pytorch/train_iter.py feature.audio_feature='logmel' model.name='Dual_Velocity_HPT' model.input2='exframe'"
-# "python pytorch/train_iter.py feature.audio_feature='logmel' model.name='Triple_Velocity_HPT' model.input2='onset' model.input3='frame'"
-# "python pytorch/train_iter.py feature.audio_feature='logmel' model.name='Triple_Velocity_HPT' model.input2='frame' model.input3='exframe'"
-)
-
-CMD="${EXPERIMENTS[$SLURM_ARRAY_TASK_ID]}"
-echo "Running: $CMD"
-eval $CMD
+python pytorch/train_score_inf.py \
+  exp.workspace="$WORKSPACE_DIR" \
+  model.name="$MODEL_NAME" \
+  model.input2=null \
+  model.input3=null \
+  adapter.type="$ADAPTER" \
+  score_informed.method="$METHOD" \
+  loss.loss_type="$LOSS_TYPE"
 
 #############################################
-#    $OUTPUT file to the unique results dir
-# note this can be a copy or move
-mv ./workspaces/checkpoints/ ${RESULTS}/
+mv "$WORKSPACE_DIR/checkpoints/" "${RESULTS}/"
+mv "$WORKSPACE_DIR/logs/" "${RESULTS}/"
 cd $HOME
 rm -r $SCRATCH # clean up the scratch space
 source deactivate # Deactivate the conda environment - source or conda deactivate
-echo hpt36h $SLURM_ARRAY_JOB_ID $SLURM_ARRAY_TASK_ID finished at `date`
+echo scoreinf_ablate $SLURM_ARRAY_JOB_ID $SLURM_ARRAY_TASK_ID finished at `date`

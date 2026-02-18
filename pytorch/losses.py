@@ -1,5 +1,20 @@
 import torch
 import torch.nn.functional as F
+VELOCITY_SCALE = 128.0
+
+
+def _get_velocity_target(target_dict):
+    """Get normalized velocity target with fixed scale for compatibility."""
+    return target_dict["velocity_roll"] / VELOCITY_SCALE
+
+
+def _get_velocity_pred(output_dict):
+    """Fetch velocity prediction tensor, accepting both vel_corr and velocity_output keys."""
+    if "vel_corr" in output_dict:
+        return output_dict["vel_corr"]
+    if "velocity_output" in output_dict:
+        return output_dict["velocity_output"]
+    raise KeyError("velocity prediction not found in output_dict (expected vel_corr or velocity_output)")
 
 
 def _align_time_dim(*tensors):
@@ -12,205 +27,85 @@ def _align_time_dim(*tensors):
     return tuple(tensor[:, :min_steps] for tensor in tensors)
 
 
-def bce(output, target, mask):
+def _masked_mean(values, mask):
+    """Compute masked mean with time alignment and safe denominator."""
+    values, mask = _align_time_dim(values, mask)
+    mask = mask.to(values.dtype)
+    denom = torch.sum(mask).clamp_min(1e-8)
+    return torch.sum(values * mask) / denom
+
+
+def _masked_bce(output, target, mask):
     """Binary crossentropy (BCE) with mask. The positions where mask=0 will be 
     deactivated when calculation BCE."""
     output, target, mask = _align_time_dim(output, target, mask)
-    eps = 1e-7
-    output = torch.clamp(output, eps, 1. - eps)
-    matrix = - target * torch.log(output) - (1. - target) * torch.log(1. - output)
-    return torch.sum(matrix * mask) / torch.sum(mask)
+    output = torch.clamp(output, 1e-7, 1.0 - 1e-7)
+    matrix = F.binary_cross_entropy(output, target, reduction="none")
+    return _masked_mean(matrix, mask)
 
 
-def mse(output, target, mask):
+def _masked_mse(output, target, mask):
     """Mean squared error (MSE) with mask"""
     output, target, mask = _align_time_dim(output, target, mask)
-    return torch.sum(((output - target) ** 2) * mask) / torch.sum(mask)
+    return _masked_mean((output - target) ** 2, mask)
 
 
 def _masked_l1(output, target, mask):
     """Mean absolute error restricted by mask."""
     output, target, mask = _align_time_dim(output, target, mask)
-    mask = mask.to(output.dtype)
-    diff = torch.abs(output - target) * mask
-    denom = torch.sum(mask).clamp_min(1e-8)
-    return torch.sum(diff) / denom
+    return _masked_mean(torch.abs(output - target), mask)
 
 
 def _masked_huber(output, target, mask, delta=0.1):
     """Huber loss restricted by mask."""
     output, target, mask = _align_time_dim(output, target, mask)
-    mask = mask.to(output.dtype)
     huber = F.huber_loss(output, target, reduction="none", delta=delta)
-    denom = torch.sum(mask).clamp_min(1e-8)
-    return torch.sum(huber * mask) / denom
-
-
-def _masked_bce(output, target, mask):
-    """Binary cross-entropy restricted by mask (probability-domain BCE)."""
-    output, target, mask = _align_time_dim(output, target, mask)
-    mask = mask.to(output.dtype)
-    output = torch.clamp(output, 1e-7, 1.0 - 1e-7)
-    bce_mat = F.binary_cross_entropy(output, target, reduction="none")
-    denom = torch.sum(mask).clamp_min(1e-8)
-    return torch.sum(bce_mat * mask) / denom
-
-# def mae(output, target, mask):
-#     """Mean absolute error (MAE) with mask"""
-#     abs_diff = torch.abs(output - target)
-#     abs_diff = abs_diff * mask
-#     mean_abs_diff = torch.sum(abs_diff) / torch.sum(mask)
-#     return mean_abs_diff
-
-# def std(output, target, mask):
-#     """Standard Deviation of Absolute Error (std_ae) with mask"""
-#     abs_diff = torch.abs(output - target)
-#     abs_diff = abs_diff * mask
-#     mean_abs_diff = torch.sum(abs_diff) / torch.sum(mask)
-
-#     squared_diff = (abs_diff - mean_abs_diff) ** 2
-#     squared_diff = squared_diff * mask
-#     variance = torch.sum(squared_diff) / torch.sum(mask)
-#     return torch.sqrt(variance)
-
-# def std_ae(output, target, mask):
-#     """Standard Deviation of Absolute Error (std_ae) with mask"""
-#     abs_diff = torch.abs(output - target)
-#     masked_diff = abs_diff * mask
-#     # Calculate mean absolute difference
-#     mean_abs_diff = torch.mean(masked_diff)
-#     # Calculate squared differences from mean
-#     squared_diff = (masked_diff - mean_abs_diff) ** 2
-#     # Mask out non-relevant entries
-#     squared_diff_masked = squared_diff * mask
-#     # Calculate variance (std_ae is square root of variance)
-#     variance = torch.sum(squared_diff_masked) / torch.sum(mask)
-#     return torch.sqrt(variance)
+    return _masked_mean(huber, mask)
 
 
 ############ Velocity loss ############
-def _get_velocity_pred(output_dict):
-    """Fetch velocity prediction tensor, accepting both vel_corr and velocity_output keys."""
-    if "vel_corr" in output_dict:
-        return output_dict["vel_corr"]
-    if "velocity_output" in output_dict:
-        return output_dict["velocity_output"]
-    raise KeyError("velocity prediction not found in output_dict (expected vel_corr or velocity_output)")
+
+def _velocity_pointwise_loss(output_dict, target_dict, mask_key, pointwise_loss):
+    pred = _get_velocity_pred(output_dict)
+    target = _get_velocity_target(target_dict)
+    return pointwise_loss(pred, target, target_dict[mask_key])
 
 
-def velocity_bce(model, output_dict, target_dict, cond_dict=None):
+def velocity_bce(cfg, output_dict, target_dict, cond_dict=None):
     """velocity regression losses only, used bce in HPT"""
-    pred = _get_velocity_pred(output_dict)
-    velocity_loss = bce(pred, target_dict['velocity_roll'] / 128, target_dict['onset_roll'])
-    return velocity_loss
+    return _velocity_pointwise_loss(output_dict, target_dict, "onset_roll", _masked_bce)
 
 
-def velocity_mse(model, output_dict, target_dict, cond_dict=None):
+def velocity_mse(cfg, output_dict, target_dict, cond_dict=None):
     """velocity regression losses only, used mse in ONF"""
-    pred = _get_velocity_pred(output_dict)
-    velocity_loss = mse(pred, target_dict['velocity_roll'] / 128, target_dict['onset_roll'])
-    return velocity_loss
+    return _velocity_pointwise_loss(output_dict, target_dict, "onset_roll", _masked_mse)
 
 
-def kim_velocity_bce_l1(model, output_dict, target_dict, cond_dict=None):
+def kim_velocity_bce_l1(cfg, output_dict, target_dict, cond_dict=None):
     """
     BCE + L1 hybrid loss proposed by Kim et al. (ISMIR 2024) for velocity regression.
     """
-    theta = getattr(model, "kim_loss_alpha", 0.5)
+    theta = cfg.loss.kim_loss_alpha  # default is 0.5 in config
     pred = _get_velocity_pred(output_dict)
-    bce_loss = bce(pred, target_dict['velocity_roll'] / 128, target_dict['frame_roll'])
-    onset_target = target_dict['velocity_roll'] / 128
+    onset_target = _get_velocity_target(target_dict)
+    bce_loss = _masked_bce(pred, onset_target, target_dict['frame_roll'])
     l1_loss = _masked_l1(pred, onset_target, target_dict['onset_roll'])
     return theta * bce_loss + (1 - theta) * l1_loss
 
 
-# def velocity_mae(model, output_dict, target_dict):
-#     """Test the performance"""
-#     velocity_loss = mae(output_dict['velocity_output'], target_dict['velocity_roll'] / 128, target_dict['onset_roll'])
-#     return velocity_loss
-
-# def velocity_std(model, output_dict, target_dict):
-#     """Test the performance"""
-#     velocity_loss = std_ae(output_dict['velocity_output'], target_dict['velocity_roll'] / 128, target_dict['onset_roll'])
-#     return velocity_loss
-
-def count_inversions(model, output_dict, target_dict, cond_dict=None):
-    
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-
-    mask = target_dict['frame_roll']
-    tensor = _get_velocity_pred(output_dict)
-    mask, tensor = _align_time_dim(mask, tensor)
-    
-    batch_size, rows, cols = tensor.shape
-    inversions = torch.zeros((batch_size, rows), dtype=torch.float).to(device)
-    
-    total_num = torch.zeros((batch_size, rows), dtype=torch.float).to(device)
-    
-    for i in range(batch_size):
-        for j in range(rows):
-            
-            total_num[i, j] += 1e-5 # 保证除法不为 0
-            
-            seq_start = -1  # 序列开始的索引
-            for k in range(cols):
-                # 检测连续序列的开始
-                if mask[i, j, k] == 1 and seq_start == -1:
-                    seq_start = k
-                # 检测连续序列的结束
-                if (mask[i, j, k] == 0 or k == cols - 1) and seq_start != -1:
-                    seq_end = k if mask[i, j, k] == 0 else k + 1
-                    # 对当前连续序列计算连续的顺序数
-                    for m in range(seq_start, seq_end):
-                        for n in range(m + 1, seq_end):
-                            if tensor[i, j, m] < tensor[i, j, n]:
-                                inversions[i, j] += 1
-                    seq_len = seq_end - seq_start
-                    seq_inversion_num = seq_len * (seq_len - 1) / 2
-                    total_num[i, j] += seq_inversion_num
-                    
-                    seq_start = -1  # 重置序列开始的索引，为检测下一个序列做准备
-   
-    
-    inversion_loss = (inversions / total_num)
-
-    inversion_loss_mask = inversion_loss.unsqueeze(-1).repeat(1, 1, cols).to(device)
-    
-    inversion_loss = (mask * inversion_loss_mask * tensor).mean()
-    
-    return inversion_loss
-
-
-def combined_loss(model, output_dict, target_dict, cond_dict=None): 
-    velocity_bce_loss = velocity_bce(model, output_dict, target_dict, cond_dict)
-    count_inversions_loss = count_inversions(model, output_dict, target_dict, cond_dict)
-    
-    return velocity_bce_loss + count_inversions_loss
-
-
-def score_inf_custom_loss(output_dict, target_dict, cond_dict, cfg):
+def score_inf_custom_loss(cfg, output_dict, target_dict, cond_dict=None):
     """Custom score-informed loss (masked L1/Huber + masked BCE + optional delta penalty)."""
-    vel_corr = output_dict["vel_corr"]
-    velocity_scale = float(getattr(cfg.feature, "velocity_scale", 128))
-    gt_vel = target_dict["velocity_roll"] / velocity_scale
+    vel_corr = _get_velocity_pred(output_dict)
+    gt_vel = _get_velocity_target(target_dict)
 
-    onset_mask = None
-    if isinstance(cond_dict, dict):
-        onset_mask = cond_dict.get("onset")
-    if onset_mask is None:
-        onset_mask = target_dict["onset_roll"]
+    onset_mask = cond_dict["onset"]
 
-    # Loss weights now pulled directly from cfg.loss (see config.yaml)
-    loss_cfg = getattr(cfg, "loss", None)
-    if loss_cfg is None:
-        raise ValueError("cfg.loss is required. Add a 'loss' section to config.yaml.")
-
-    w_l1 = float(loss_cfg.w_l1)
-    w_bce = float(loss_cfg.w_bce)
-    w_delta = float(loss_cfg.w_delta)
-    use_huber = bool(loss_cfg.use_huber)
-    w_huber = float(loss_cfg.w_huber)
-    huber_delta = float(loss_cfg.huber_delta)
+    w_l1 = float(cfg.loss.w_l1)
+    w_bce = float(cfg.loss.w_bce)              
+    w_delta = float(cfg.loss.w_delta)          
+    use_huber = bool(cfg.loss.use_huber)       
+    w_huber = float(cfg.loss.w_huber)          
+    huber_delta = float(cfg.loss.huber_delta)  
 
     if use_huber:
         loss_reg = w_huber * _masked_huber(vel_corr, gt_vel, onset_mask, delta=huber_delta)
@@ -228,40 +123,23 @@ def score_inf_custom_loss(output_dict, target_dict, cond_dict, cfg):
     return loss
 
 
-def compute_loss(cfg, model, output_dict, target_dict, cond_dict=None):
-    """
-    Unified training loss entry.
-    Delegates loss selection to get_loss_func for both legacy and score-informed trainers.
-    """
-    return get_loss_func(cfg=cfg)(model, output_dict, target_dict, cond_dict)
-                                             
-
-def get_loss_func(loss_type=None, cfg=None):
+def get_loss_func(cfg, loss_type=None):
     """
     Return a callable with unified signature:
-      fn(model, output_dict, target_dict, cond_dict=None) -> loss
+      fn(cfg, output_dict, target_dict, cond_dict=None) -> loss
 
     Selection order:
     - explicit loss_type if provided
-    - cfg.loss.loss_type (preferred)
-    - cfg.exp.loss_type (legacy fallback)
+    - cfg.loss.loss_type
     """
-    if loss_type == "score_inf_custom":
-        if cfg is None:
-            raise ValueError("cfg is required for score_inf_custom loss.")
-
-        def _score_inf_loss(_, output_dict, target_dict, cond_dict=None):
-            return score_inf_custom_loss(output_dict, target_dict, cond_dict, cfg)
-
-        return _score_inf_loss
-
-    legacy_map = {
+    loss_type = cfg.loss.loss_type
+    loss_map = {
         "velocity_bce": velocity_bce,
         "velocity_mse": velocity_mse,
-        "kim_bce_l1": kim_velocity_bce_l1,
-        "combine_bce": combined_loss,
+        "kim_bce_l1":   kim_velocity_bce_l1,
+        "score_inf_custom": score_inf_custom_loss,
     }
-    if loss_type in legacy_map:
-        return legacy_map[loss_type]
+    if loss_type in loss_map:
+        return loss_map[loss_type]
 
-    raise Exception('Incorrect loss_type!')
+    raise ValueError(f"Incorrect loss_type: {loss_type!r}")

@@ -19,7 +19,7 @@ from pytorch_utils import move_data_to_device
 from data_generator import (Maestro_Dataset, SMD_Dataset, MAPS_Dataset,
      Sampler, EvalSampler, collate_fn)
 from utilities import create_folder, create_logging, get_model_name
-from losses import compute_loss
+from losses import get_loss_func
 from evaluate import SegmentEvaluator
 
 from amt_modules import build_adapter
@@ -318,8 +318,6 @@ def train(cfg):
 
     model = ScoreInfWrapper(adapter, post, freeze_base=freeze_base).to(device)
 
-    model.kim_loss_alpha = getattr(cfg.loss, "kim_loss_alpha", getattr(cfg.exp, "kim_loss_alpha", 0.5))
-
     # Paths for results
     model_name = get_model_name(cfg)
     if method and method != "direct_output":
@@ -365,8 +363,8 @@ def train(cfg):
             logging.warning(f"Checkpoint {state_path} not found. Starting from scratch.")
 
     # Match legacy seed tweak
-    if cfg.model.name == "Single_Velocity_HPT":
-        cfg.exp.random_seed = 12
+    # if cfg.model.name == "Single_Velocity_HPT":
+    #     cfg.exp.random_seed = 12
 
     # Build data loaders (use sampler state if resuming)
     train_loader, train_sampler, eval_loaders = build_dataloaders(cfg, resume_sampler_state)
@@ -416,6 +414,7 @@ def train(cfg):
     early_step = int(early_phase * 0.1) if early_phase > 0 else 0
 
     evaluator = SegmentEvaluator(model, cfg, score_inf=True)
+    loss_fn = get_loss_func(cfg=cfg)
 
     for batch_data_dict in train_loader:
         if cfg.exp.decay:
@@ -426,7 +425,7 @@ def train(cfg):
         model.train()
         audio, cond, batch_torch, base_inputs = _prepare_batch(cfg, batch_data_dict, device)
         out = model(audio, cond, *base_inputs)
-        loss = compute_loss(cfg, model, out, batch_torch, cond_dict=cond)
+        loss = loss_fn(cfg, out, batch_torch, cond_dict=cond)
 
         print(iteration, loss)
         train_loss += loss.item()

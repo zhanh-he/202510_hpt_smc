@@ -1,12 +1,9 @@
 import os
 import logging
 import librosa
-import audioread
 import numpy as np
 import csv
-import datetime
 import collections
-import pickle
 from pathlib import Path
 from mido import MidiFile
 
@@ -127,10 +124,6 @@ def load_mono_audio(audio_path, sample_rate):
     path = Path(audio_path)
     audio, _ = librosa.load(str(path), sr=sample_rate, mono=True)
     return audio.astype(np.float32)
-
-
-def note_to_freq(piano_note):
-    return 2 ** ((piano_note - 39) / 12) * 440
 
     
 def create_logging(log_dir, filemode):
@@ -1517,107 +1510,3 @@ class OnsetsFramesPostProcessor(object):
         
         return pedal_events
 
-
-class StatisticsContainer(object):
-    def __init__(self, statistics_path, mode="epoch"):
-        """
-        Contain statistics of different training epochs.
-        Args:
-            statistics_path (str): Path to save the statistics file.
-            mode (str): 'epoch' or 'iteration', determines how statistics are stored.
-        """
-        assert mode in ["epoch", "iteration"], "Mode must be 'epoch' or 'iteration'."
-        self.statistics_path = statistics_path
-        self.mode = mode
-        self.backup_statistics_path = '{}_{}.pkl'.format(
-            os.path.splitext(self.statistics_path)[0], 
-            datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
-        self.statistics_dict = {'train': [], 'validation': [], 'test': []}
-
-    def append(self, key, statistics, data_type):
-        """Append statistics for the current key (epoch or iteration)."""
-        statistics[self.mode] = key
-        self.statistics_dict[data_type].append(statistics)
-        
-    def dump(self):
-        """Save statistics to the specified file."""
-        pickle.dump(self.statistics_dict, open(self.statistics_path, 'wb'))
-        pickle.dump(self.statistics_dict, open(self.backup_statistics_path, 'wb'))
-        logging.info('    Dump statistics to {}'.format(self.statistics_path))
-        logging.info('    Dump statistics to {}'.format(self.backup_statistics_path))
-        
-    def load_state_dict(self, resume_key):
-        """Load and filter statistics up to the given resume key (epoch or iteration)."""
-        self.statistics_dict = pickle.load(open(self.statistics_path, 'rb'))
-        resume_statistics_dict = {'train': [], 'validation': [], 'test': []}
-        for key in self.statistics_dict.keys():
-            for statistics in self.statistics_dict[key]:
-                if statistics[self.mode] <= resume_key:
-                    resume_statistics_dict[key].append(statistics) 
-        self.statistics_dict = resume_statistics_dict
-
-
-def load_audio(path, sr=22050, mono=True, offset=0.0, duration=None,
-    dtype=np.float32, res_type='kaiser_best', 
-    backends=[audioread.ffdec.FFmpegAudioFile]):
-    """Load audio. Copied from librosa.core.load() except that ffmpeg backend is 
-    always used in this function."""
-
-    y = []
-    with audioread.audio_open(os.path.realpath(path), backends=backends) as input_file:
-        sr_native = input_file.samplerate
-        n_channels = input_file.channels
-
-        s_start = int(np.round(sr_native * offset)) * n_channels
-
-        if duration is None:
-            s_end = np.inf
-        else:
-            s_end = s_start + (int(np.round(sr_native * duration))
-                               * n_channels)
-
-        n = 0
-
-        for frame in input_file:
-            frame = librosa.core.audio.util.buf_to_float(frame, dtype=dtype)
-            n_prev = n
-            n = n + len(frame)
-
-            if n < s_start:
-                # offset is after the current frame
-                # keep reading
-                continue
-
-            if s_end < n_prev:
-                # we're off the end.  stop reading
-                break
-
-            if s_end < n:
-                # the end is in this frame.  crop.
-                frame = frame[:s_end - n_prev]
-
-            if n_prev <= s_start <= n:
-                # beginning is in this frame
-                frame = frame[(s_start - n_prev):]
-
-            # tack on the current frame
-            y.append(frame)
-
-    if y:
-        y = np.concatenate(y)
-
-        if n_channels > 1:
-            y = y.reshape((-1, n_channels)).T
-            if mono:
-                y = librosa.core.audio.to_mono(y)
-
-        if sr is not None:
-            y = librosa.core.audio.resample(y, sr_native, sr, res_type=res_type)
-
-        else:
-            sr = sr_native
-
-    # Final cleanup for dtype and contiguity
-    y = np.ascontiguousarray(y, dtype=dtype)
-
-    return (y, sr)

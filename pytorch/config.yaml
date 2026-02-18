@@ -1,6 +1,6 @@
 wandb:
   project: "202602_hpt"
-  name: "${feature.audio_feature}-${model.name}-ext${model.input2}${model.input3}-sr${feature.sample_rate}-${wandb.comment}" # -iter${exp.total_iteration}
+  name: "${feature.audio_feature}-${adapter.type}-${model.name}-${score_informed.method}-${loss.loss_type}-k${loss.kim_loss_alpha}-l1${loss.w_l1}-b${loss.w_bce}-d${loss.w_delta}-uh${loss.use_huber}-wh${loss.w_huber}-hd${loss.huber_delta}-ext${model.input2}${model.input3}-sr${feature.sample_rate}" # -iter${exp.total_iteration}
   comment: "mel128"
   log_velocity_interval: ${exp.eval_iteration}  # Set 0/null to disable WandB velocity roll images
 
@@ -72,7 +72,7 @@ model:
   type: "velo" # "notes"
   # -------------------------------------------------------------------------
   # name options:
-  #   Single_Velocity_HPT / Dual_Velocity_HPT / Triple_Velocity_HPT
+  #   Single_Velocity_HPT
   #   DynestAudioCNN
   #   FiLMUNetPretrained  -> set input2=frame (or onset) and point pretrained_checkpoint below
   #   HPPNet_SP           -> audio-only HPPNet (velocity head only, no input2/input3)
@@ -119,7 +119,7 @@ loss:
 # Score-informed training (train_score_inf.py)
 # ---------------------------
 adapter:
-  type: "hpt"   # hpt | hppnet | keymap
+  type: "hpt"   # hpt | hppnet | dynest
   params: {}
 
 score_informed:

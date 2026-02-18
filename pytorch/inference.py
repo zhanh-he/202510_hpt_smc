@@ -1,5 +1,4 @@
 import argparse
-import inspect
 import csv
 import os
 import sys
@@ -14,9 +13,8 @@ from hydra import compose, initialize
 from tqdm import tqdm
 
 from pytorch_utils import forward, forward_velo
-from model_DynEst import DynestAudioCNN
-from model_FilmUnet import FiLMUNetPretrained
-from model_HPT import Dual_Velocity_HPT, Single_Velocity_HPT, Triple_Velocity_HPT
+from amt_modules.model_registry import build_model
+from kim_ismir2024.model_FilmUnet import FiLMUNetPretrained
 from feature_extractor import PsychoFeatureExtractor
 from utilities import (
     OnsetsFramesPostProcessor,
@@ -75,26 +73,10 @@ class TranscriptionBase:
         self.segment_samples = int(cfg.feature.sample_rate * cfg.feature.segment_seconds)
         self.segment_frames = int(round(cfg.feature.frames_per_second * cfg.feature.segment_seconds)) + 1
 
-        model_cls = eval(cfg.model.name)
-        sig = inspect.signature(model_cls.__init__)
-        params = [
-            p
-            for p in list(sig.parameters.values())[1:]
-            if p.kind
-            in (
-                inspect.Parameter.POSITIONAL_ONLY,
-                inspect.Parameter.POSITIONAL_OR_KEYWORD,
-                inspect.Parameter.KEYWORD_ONLY,
-            )
-        ]
-        names = {p.name for p in params}
-        if {"frames_per_second", "classes_num"}.issubset(names):
-            self.model = model_cls(
-                frames_per_second=cfg.feature.frames_per_second,
-                classes_num=cfg.feature.classes_num,
-            )
+        if cfg.model.name == "FiLMUNetPretrained":
+            self.model = FiLMUNetPretrained(cfg)
         else:
-            self.model = model_cls(cfg)
+            self.model = build_model(cfg)
         if os.path.getsize(checkpoint_path) == 0:
             raise ValueError(f"Checkpoint file for inference is empty: {checkpoint_path}")
 

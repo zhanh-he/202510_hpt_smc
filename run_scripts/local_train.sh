@@ -1,0 +1,17 @@
+python pytorch/train_score_inf.py model.name="Single_Velocity_HPT" model.input2=null model.input3=null adapter.type="hpt" score_informed.method="direct_output" loss.loss_type="score_inf_custom"
+python pytorch/train_score_inf.py model.name="Single_Velocity_HPT" model.input2=null model.input3=null adapter.type="hpt" score_informed.method="scrr" loss.loss_type="score_inf_custom"
+python pytorch/train_score_inf.py model.name="Single_Velocity_HPT" model.input2=null model.input3=null adapter.type="hpt" score_informed.method="dual_gated" loss.loss_type="score_inf_custom"
+python pytorch/train_score_inf.py model.name="Single_Velocity_HPT" model.input2=null model.input3=null adapter.type="hpt" score_informed.method="note_editor" loss.loss_type="score_inf_custom"
+python pytorch/train_score_inf.py model.name="Single_Velocity_HPT" model.input2=null model.input3=null adapter.type="hpt" score_informed.method="bilstm" loss.loss_type="score_inf_custom"
+
+python pytorch/train_score_inf.py model.name="HPPNet_SP" model.input2=null model.input3=null adapter.type="hppnet" score_informed.method="direct_output" loss.loss_type="score_inf_custom"
+python pytorch/train_score_inf.py model.name="HPPNet_SP" model.input2=null model.input3=null adapter.type="hppnet" score_informed.method="scrr" loss.loss_type="score_inf_custom"
+python pytorch/train_score_inf.py model.name="HPPNet_SP" model.input2=null model.input3=null adapter.type="hppnet" score_informed.method="dual_gated" loss.loss_type="score_inf_custom"
+python pytorch/train_score_inf.py model.name="HPPNet_SP" model.input2=null model.input3=null adapter.type="hppnet" score_informed.method="note_editor" loss.loss_type="score_inf_custom"
+python pytorch/train_score_inf.py model.name="HPPNet_SP" model.input2=null model.input3=null adapter.type="hppnet" score_informed.method="bilstm" loss.loss_type="score_inf_custom"
+
+python pytorch/train_score_inf.py model.name="DynestAudioCNN" model.input2=null model.input3=null adapter.type="dynest" score_informed.method="direct_output" loss.loss_type="score_inf_custom"
+python pytorch/train_score_inf.py model.name="DynestAudioCNN" model.input2=null model.input3=null adapter.type="dynest" score_informed.method="scrr" loss.loss_type="score_inf_custom"
+python pytorch/train_score_inf.py model.name="DynestAudioCNN" model.input2=null model.input3=null adapter.type="dynest" score_informed.method="dual_gated" loss.loss_type="score_inf_custom"
+python pytorch/train_score_inf.py model.name="DynestAudioCNN" model.input2=null model.input3=null adapter.type="dynest" score_informed.method="note_editor" loss.loss_type="score_inf_custom"
+python pytorch/train_score_inf.py model.name="DynestAudioCNN" model.input2=null model.input3=null adapter.type="dynest" score_informed.method="bilstm" loss.loss_type="score_inf_custom"
