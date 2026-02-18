@@ -1,0 +1,48 @@
+{
+  "os": "Linux-6.8.0-85-generic-x86_64-with-glibc2.35",
+  "python": "CPython 3.11.11",
+  "startedAt": "2026-02-18T21:23:10.086052Z",
+  "args": [
+    "model.type=hpt",
+    "score_informed.method=bilstm",
+    "model.input2=onset",
+    "model.input3=null",
+    "loss.loss_type=score_inf_custom"
+  ],
+  "program": "/media/mengh/SharedData/zhanh/202510_hpt_smc/pytorch/train_score_inf.py",
+  "codePath": "pytorch/train_score_inf.py",
+  "git": {
+    "remote": "https://github.com/zhanh-he/202510_hpt_smc.git",
+    "commit": "6b278a608dc1ca71c1148cf3379f23cebc390f51"
+  },
+  "email": "22597343@student.uwa.edu.au",
+  "root": "/media/mengh/SharedData/zhanh/202510_hpt_smc",
+  "host": "mengh-8625",
+  "executable": "/home/mengh/miniconda3/envs/dynest/bin/python",
+  "codePathLocal": "pytorch/train_score_inf.py",
+  "cpu_count": 12,
+  "cpu_count_logical": 24,
+  "gpu": "NVIDIA GeForce RTX 5090",
+  "gpu_count": 1,
+  "disk": {
+    "/": {
+      "total": "1122113290240",
+      "used": "230741786624"
+    }
+  },
+  "memory": {
+    "total": "66481557504"
+  },
+  "cpu": {
+    "count": 12,
+    "countLogical": 24
+  },
+  "gpu_nvidia": [
+    {
+      "name": "NVIDIA GeForce RTX 5090",
+      "memoryTotal": "34190917632",
+      "cudaCores": 21760
+    }
+  ],
+  "cudaVersion": "13.0"
+}

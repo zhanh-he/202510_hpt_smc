@@ -1,0 +1,12 @@
+root        : INFO     Number of GPUs available: 1
+root        : INFO     Train phase switched to: joint at iteration 0
+0 tensor(0.3552, device='cuda:0', grad_fn=<AddBackward0>)
+Traceback (most recent call last):
+  File "/media/mengh/SharedData/zhanh/202510_hpt_smc/pytorch/train_score_inf.py", line 532, in <module>
+    train(cfg)
+  File "/media/mengh/SharedData/zhanh/202510_hpt_smc/pytorch/train_score_inf.py", line 467, in train
+    log_velocity_rolls(cfg, iteration, {"velocity_output": out["vel_corr"]}, batch_torch)
+  File "/media/mengh/SharedData/zhanh/202510_hpt_smc/pytorch/train_score_inf.py", line 124, in log_velocity_rolls
+    im = ax.imshow(
+         ^^^^^^^^^
+AttributeError: 'numpy.ndarray' object has no attribute 'imshow'

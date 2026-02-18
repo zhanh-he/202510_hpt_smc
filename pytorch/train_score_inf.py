@@ -46,17 +46,15 @@ def _note_segments(active_mask: np.ndarray) -> list:
     return list(zip(starts.tolist(), ends.tolist()))
 
 
-def _post_process_rolls_and_metrics(
+def _post_process_rolls(
     pred_vis: np.ndarray,
     target_raw: np.ndarray,
     onset_roll: np.ndarray,
-    velocity_scale: float,
-) -> Tuple[np.ndarray, np.ndarray, Dict[str, float]]:
+) -> Tuple[np.ndarray, np.ndarray]:
     frames, keys = target_raw.shape
     frame_pick_roll = np.zeros_like(pred_vis, dtype=np.float32)
     onset_pick_roll = np.zeros_like(pred_vis, dtype=np.float32)
 
-    frame_errors = []
     for key in range(keys):
         note_active = target_raw[:, key] > 0
         for start, end in _note_segments(note_active):
@@ -68,9 +66,6 @@ def _post_process_rolls_and_metrics(
             frame_val = float(np.max(pred_note)) if pred_note.size else 0.0
             frame_pick_roll[start:end, key] = frame_val
 
-            gt_note_vel = float(np.max(target_raw[start:end, key]))
-            frame_errors.append(abs(frame_val * velocity_scale - gt_note_vel))
-
             onset_mask = onset_roll[start:end, key] > 0
             if np.any(onset_mask):
                 onset_val = float(np.max(pred_note[onset_mask]))
@@ -78,29 +73,7 @@ def _post_process_rolls_and_metrics(
                 onset_val = 0.0
             onset_pick_roll[start:end, key] = onset_val
 
-    frame_max_mae = float(np.mean(frame_errors)) if frame_errors else 0.0
-    frame_max_std = float(np.std(frame_errors)) if frame_errors else 0.0
-
-    onset_mask = onset_roll > 0
-    onset_note_count = int(np.count_nonzero(onset_mask))
-    if onset_note_count > 0:
-        pred_onset = (pred_vis * onset_roll) * velocity_scale
-        gt_onset = target_raw * onset_roll
-        onset_error = np.abs(pred_onset - gt_onset)
-        onset_masked_mae = float(np.sum(onset_error) / onset_note_count)
-        onset_non_zero = onset_error[onset_error != 0]
-        onset_masked_std = float(onset_non_zero.std()) if onset_non_zero.size else 0.0
-    else:
-        onset_masked_mae = 0.0
-        onset_masked_std = 0.0
-
-    metrics = {
-        "frame_max_mae": frame_max_mae,
-        "frame_max_std": frame_max_std,
-        "onset_masked_mae": onset_masked_mae,
-        "onset_masked_std": onset_masked_std,
-    }
-    return frame_pick_roll, onset_pick_roll, metrics
+    return frame_pick_roll, onset_pick_roll
 
 
 def log_velocity_rolls(cfg, iteration, batch_output_dict, batch_data_dict):
@@ -133,18 +106,17 @@ def log_velocity_rolls(cfg, iteration, batch_output_dict, batch_data_dict):
     target_img = np.clip(target_raw / velocity_scale, 0.0, 1.0)
     onset_roll = onset[0].detach().cpu().numpy() if onset is not None else np.zeros_like(target_raw)
 
-    frame_pick_img, onset_pick_img, metrics = _post_process_rolls_and_metrics(
+    frame_pick_img, onset_pick_img = _post_process_rolls(
         pred_vis=pred_vis,
         target_raw=target_raw,
         onset_roll=onset_roll,
-        velocity_scale=float(velocity_scale),
     )
 
 
-    fig, axes = plt.subplots(1, 4, figsize=(20, 4))
+    fig, axes = plt.subplots(2, 2, figsize=(20, 4))
     specs = [
-        ("Prediction", pred_vis),
         ("Ground Truth", target_img),
+        ("Prediction", pred_vis),
         ("Post-Proc Frame-Pick", frame_pick_img),
         ("Post-Proc Onset-Pick", onset_pick_img),
     ]
@@ -167,7 +139,6 @@ def log_velocity_rolls(cfg, iteration, batch_output_dict, batch_data_dict):
     wandb.log(
         {
             "velocity_roll_comparison": wandb.Image(fig),
-            **metrics,
         },
         step=iteration,
     )
@@ -175,7 +146,12 @@ def log_velocity_rolls(cfg, iteration, batch_output_dict, batch_data_dict):
 
 
 def _select_velocity_metrics(statistics: Dict[str, float]) -> Dict[str, float]:
-    keep_keys = ("velocity_mae", "velocity_std")
+    keep_keys = (
+        "frame_max_error",
+        "frame_max_std",
+        "onset_masked_error",
+        "onset_masked_std",
+    )
     return {k: statistics[k] for k in keep_keys if k in statistics}
 
 

@@ -113,11 +113,16 @@ def get_midi_sound_profile(midi_vel_roll: np.ndarray) -> List[Dict[str, np.ndarr
     return sound_profile
 
 
-def gt_to_note_list(
-    output_dict_list: Sequence[Dict[str, np.ndarray]],
-    target_list: Sequence[Dict[str, np.ndarray]],
-    ) -> Tuple[float, float, List[Dict[str, np.ndarray]], float, float, float]:
-    """Kim et al. per-note error profile."""
+def gt_to_note_list(output_dict_list: Sequence[Dict[str, np.ndarray]], target_list: Sequence[Dict[str, np.ndarray]]) -> Tuple[float, float, List[Dict[str, Any]], float, float, float, float, float, float]:
+    """Backward-compatible wrapper for legacy callers."""
+    frame_max_error, std_max_error = frame_max_metrics__from_list(output_dict_list, target_list)
+    error_profile, f1, precision, recall, frame_f1, frame_precision, frame_recall = detailed_f1_metrics_from_list(output_dict_list, target_list)
+    return (frame_max_error, std_max_error,
+        error_profile, f1, precision, recall, frame_f1, frame_precision, frame_recall)
+
+
+def _collect_eval_arrays(output_dict_list: Sequence[Dict[str, np.ndarray]], target_list: Sequence[Dict[str, np.ndarray]]) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Collect frame-aligned matrices used by Kim-style metrics."""
     score_rows: List[np.ndarray] = []
     pedal_list: List[np.ndarray] = []
     estimation_rows: List[np.ndarray] = []
@@ -136,64 +141,83 @@ def gt_to_note_list(
             frame_mask_rows.append(target_segment["frame_roll"][nth_frame][np.newaxis, :])
 
     if not score_rows:
-        return (0.0, 0.0, [], 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+        empty_2d = np.empty((0, 88), dtype=float)
+        empty_1d = np.empty((0,), dtype=float)
+        return empty_2d, empty_2d, empty_1d, empty_2d
 
     score = np.concatenate(score_rows, axis=0)
     estimation = np.concatenate(estimation_rows, axis=0)
     pedal = np.concatenate(pedal_list, axis=0)
     frame_mask = np.concatenate(frame_mask_rows, axis=0)
+    return score, estimation, pedal, frame_mask
 
-    f1, precision, recall = classification_error(score.copy(), estimation.copy())
-    frame_f1, frame_precision, frame_recall = classification_with_mask(
-        score.copy(), estimation.copy(), frame_mask.copy()
-    )
 
-    score = np.transpose(score)
-    estimation = np.transpose(estimation)
+def frame_max_metrics__from_list(output_dict_list: Sequence[Dict[str, np.ndarray]], target_list: Sequence[Dict[str, np.ndarray]]) -> Tuple[float, float]:
+    """Compute only frame-max MAE/STD (lightweight path for train-time evaluation)."""
+    score, estimation, _, _ = _collect_eval_arrays(output_dict_list, target_list)
+    if score.size == 0:
+        return 0.0, 0.0
 
-    score_sound_profile = get_midi_sound_profile(score)
-    error_profile: List[Dict[str, np.ndarray]] = []
+    score_t = np.transpose(score)
+    estimation_t = np.transpose(estimation)
+    score_sound_profile = get_midi_sound_profile(score_t)
     accum_error: List[float] = []
 
     for note_profile in score_sound_profile:
         start, end = note_profile["duration"]
-        vel_est = estimation[note_profile["pitch"]][start:end].copy()
+        vel_est = estimation_t[note_profile["pitch"]][start:end].copy()
+        vel_est[vel_est <= 0.0001] = 0
+        max_estimation = float(np.max(vel_est) * 128.0) if vel_est.size else 0.0
+        notelevel_error = abs(max_estimation - float(note_profile["velocity"]))
+        accum_error.append(notelevel_error)
+
+    frame_max_error = float(np.mean(accum_error)) if accum_error else 0.0
+    std_max_error = float(np.std(accum_error)) if accum_error else 0.0
+    return frame_max_error, std_max_error
+
+
+def detailed_f1_metrics_from_list(output_dict_list: Sequence[Dict[str, np.ndarray]], target_list: Sequence[Dict[str, np.ndarray]]) -> Tuple[List[Dict[str, Any]], float, float, float, float, float, float]:
+    """Compute detailed Kim-style metrics and per-note error profile."""
+    score, estimation, pedal, frame_mask = _collect_eval_arrays(output_dict_list, target_list)
+    if score.size == 0:
+        return [], 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+
+    f1, precision, recall = classification_error(score.copy(), estimation.copy())
+    frame_f1, frame_precision, frame_recall = classification_with_mask(score.copy(), estimation.copy(), frame_mask.copy())
+
+    score_t = np.transpose(score)
+    estimation_t = np.transpose(estimation)
+
+    score_sound_profile = get_midi_sound_profile(score_t)
+    error_profile: List[Dict[str, Any]] = []
+
+    for note_profile in score_sound_profile:
+        start, end = note_profile["duration"]
+        vel_est = estimation_t[note_profile["pitch"]][start:end].copy()
         vel_est[vel_est <= 0.0001] = 0
 
         classification_check = bool(np.sum(vel_est) > 0)
         max_estimation = float(np.max(vel_est) * 128.0) if vel_est.size else 0.0
         notelevel_error = abs(max_estimation - float(note_profile["velocity"]))
-        sim_note_count = num_simultaneous_notes(note_profile, score)
+        sim_note_count = num_simultaneous_notes(note_profile, score_t)
         pedal_onoff = pedal_check(note_profile, pedal)
 
         error_profile.append(
-            {
-                "pitch": note_profile["pitch"],
-                "duration": (int(start), int(end)),
-                "note_error": notelevel_error,
-                "ground_truth": float(note_profile["velocity"]),
-                "estimation": max_estimation,
-                "pedal_check": pedal_onoff,
-                "simultaneous_notes": sim_note_count,
-                "classification_check": classification_check,
+            {"pitch": note_profile["pitch"],
+             "duration": (int(start), int(end)),
+             "note_error": notelevel_error,
+             "ground_truth": float(note_profile["velocity"]),
+             "estimation": max_estimation,
+             "pedal_check": pedal_onoff,
+             "simultaneous_notes": sim_note_count,
+             "classification_check": classification_check,
             } # type: ignore
         )
-        accum_error.append(notelevel_error)
 
-    frame_max_error = float(np.mean(accum_error)) if accum_error else 0.0
-    std_max_error = float(np.std(accum_error)) if accum_error else 0.0
-
-    return (
-        frame_max_error, std_max_error, 
-        error_profile, f1, precision, recall,
-        frame_f1, frame_precision, frame_recall,
-    )
+    return error_profile, f1, precision, recall, frame_f1, frame_precision, frame_recall
 
 
-def eval_from_list(
-    output_dict_list: Sequence[Dict[str, np.ndarray]],
-    target_dict_list: Sequence[Dict[str, np.ndarray]],
-) -> Tuple[float, float]:
+def onset_pick_metrics_from_list(output_dict_list: Sequence[Dict[str, np.ndarray]], target_dict_list: Sequence[Dict[str, np.ndarray]]) -> Tuple[float, float]:
     """Kim et al. onset-only evaluation."""
     score_error_rows: List[np.ndarray] = []
     num_note = 0
@@ -206,7 +230,6 @@ def eval_from_list(
         if segment_error.size:
             score_error_rows.append(segment_error)
         num_note += num_onset
-
     if num_note == 0:
         return 0.0, 0.0
 
@@ -335,10 +358,9 @@ class KimStyleEvaluator:
         output_dict_list = [output_entry]
         target_dict_list = [target_entry]
 
-        frame_max_error, frame_max_std, error_profile, f1, precision, recall, \
-            frame_mask_f1, frame_mask_precision, frame_mask_recall = gt_to_note_list(output_dict_list, target_dict_list)
-
-        onset_masked_error, onset_masked_std = eval_from_list(output_dict_list, target_dict_list)
+        frame_max_error, frame_max_std = frame_max_metrics__from_list(output_dict_list, target_dict_list)
+        error_profile, f1, precision, recall, frame_mask_f1, frame_mask_precision, frame_mask_recall = detailed_f1_metrics_from_list(output_dict_list, target_dict_list)
+        onset_masked_error, onset_masked_std = onset_pick_metrics_from_list(output_dict_list, target_dict_list)
 
         return {
             "audio_name": Path(hdf5_path).name,

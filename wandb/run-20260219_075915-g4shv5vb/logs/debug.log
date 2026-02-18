@@ -20,3 +20,4 @@ config: {'wandb': {'project': '202602_smc', 'name': 'logmel-hpt-note_editor-scor
 2026-02-19 07:59:16,800 INFO    MainThread:3248000 [wandb_run.py:_redirect():2335] Wrapping output streams.
 2026-02-19 07:59:16,800 INFO    MainThread:3248000 [wandb_run.py:_redirect():2360] Redirects installed.
 2026-02-19 07:59:16,801 INFO    MainThread:3248000 [wandb_init.py:init():983] run started, returning control to user process
+2026-02-19 08:17:28,797 WARNING MsgRouterThr:3248000 [router.py:message_loop():75] message_loop has been closed

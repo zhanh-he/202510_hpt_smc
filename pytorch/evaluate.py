@@ -4,7 +4,7 @@ sys.path.insert(1, os.path.join(sys.path[0], '../utils'))
 import numpy as np
 import torch
 from pytorch_utils import move_data_to_device, append_to_dict
-from calculate_scores import gt_to_note_list, eval_from_list
+from calculate_scores import frame_max_metrics__from_list, onset_pick_metrics_from_list
 
 def _segments_from_output(output_dict):
     """Convert batched output/target rolls to per-segment dicts used by Kim metrics."""
@@ -39,23 +39,13 @@ def _segments_from_output(output_dict):
     return segments, targets
 
 
-def _kim_metrics_from_segments(segments, targets):
+def _kim_metrics_from_segments(output_dict_list, target_dict_list):
     """Run the same Kim-style metrics used in calculate_scores."""
-    if not segments or not targets:
+    if not output_dict_list or not target_dict_list:
         return {}
 
-    (
-        frame_max_err,
-        frame_max_std,
-        _,
-        _,
-        _,
-        _,
-        _,
-        _,
-        _,
-    ) = gt_to_note_list(segments, targets)
-    onset_masked_error, onset_masked_std = eval_from_list(segments, targets)
+    frame_max_err, frame_max_std = frame_max_metrics__from_list(output_dict_list, target_dict_list)
+    onset_masked_error, onset_masked_std = onset_pick_metrics_from_list(output_dict_list, target_dict_list)
 
     stats = {
         'frame_max_error': round(frame_max_err, 4),
@@ -63,9 +53,6 @@ def _kim_metrics_from_segments(segments, targets):
         'onset_masked_error': round(onset_masked_error, 4),
         'onset_masked_std': round(onset_masked_std, 4),
     }
-    # Backward-compatible aliases for legacy logging keys.
-    stats['velocity_mae'] = stats['frame_max_error']
-    stats['velocity_std'] = stats['frame_max_std']
     return stats
 
 
@@ -79,7 +66,6 @@ class SegmentEvaluator(object):
             score_inf: set True for ScoreInfWrapper (expects cond dict)
         """
         self.model = model
-        self.batch_size = cfg.exp.batch_size
         self.input2 = cfg.model.input2
         self.input3 = cfg.model.input3
         self.score_inf = score_inf
@@ -97,8 +83,6 @@ class SegmentEvaluator(object):
             return []
         if self.score_method == "note_editor":
             return ["onset"] + ([self.input3] if self.input3 else [])
-        if self.score_method in ("bilstm", "scrr", "dual_gated"):
-            return cond_selected
         return cond_selected
 
     def _forward_score_inf(self, batch_data_dict, device):
@@ -135,7 +119,6 @@ class SegmentEvaluator(object):
 
     def evaluate(self, dataloader):
         """Evaluate over dataloader and compute Kim metrics."""
-        statistics = {}
         output_dict = {}
         device = next(self.model.parameters()).device
         required_target_keys = ("velocity_roll", "frame_roll", "onset_roll", "pedal_frame_roll")
@@ -143,8 +126,6 @@ class SegmentEvaluator(object):
         for batch_data_dict in dataloader:
             out = self._forward_score_inf(batch_data_dict, device) if self.score_inf else self._forward_legacy(batch_data_dict, device)
             pred = out.get("velocity_output")
-            if pred is None:
-                pred = out.get("vel_corr")
             if torch.is_tensor(pred):
                 append_to_dict(output_dict, "velocity_output", pred.data.cpu().numpy())
 
@@ -156,5 +137,5 @@ class SegmentEvaluator(object):
 
         if 'velocity_output' in output_dict:
             segments, targets = _segments_from_output(output_dict)
-            statistics.update(_kim_metrics_from_segments(segments, targets))
-        return statistics
+            return _kim_metrics_from_segments(segments, targets)
+        return {}

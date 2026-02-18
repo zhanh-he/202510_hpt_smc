@@ -1,0 +1,15 @@
+{"time":"2026-02-19T08:20:13.975519228+11:00","level":"INFO","msg":"stream: starting","core version":"0.19.3","symlink path":"/media/mengh/SharedData/zhanh/202510_hpt_smc/wandb/run-20260219_082013-83s60txc/logs/debug-core.log"}
+{"time":"2026-02-19T08:20:14.078625272+11:00","level":"INFO","msg":"created new stream","id":"83s60txc"}
+{"time":"2026-02-19T08:20:14.078664726+11:00","level":"INFO","msg":"stream: started","id":"83s60txc"}
+{"time":"2026-02-19T08:20:14.078688742+11:00","level":"INFO","msg":"writer: Do: started","stream_id":"83s60txc"}
+{"time":"2026-02-19T08:20:14.078692199+11:00","level":"INFO","msg":"sender: started","stream_id":"83s60txc"}
+{"time":"2026-02-19T08:20:14.078700334+11:00","level":"INFO","msg":"handler: started","stream_id":"83s60txc"}
+{"time":"2026-02-19T08:20:14.586289333+11:00","level":"INFO","msg":"Starting system monitor"}
+{"time":"2026-02-19T08:20:18.302681792+11:00","level":"INFO","msg":"stream: closing","id":"83s60txc"}
+{"time":"2026-02-19T08:20:18.306010464+11:00","level":"INFO","msg":"Stopping system monitor"}
+{"time":"2026-02-19T08:20:18.306301104+11:00","level":"INFO","msg":"Stopped system monitor"}
+{"time":"2026-02-19T08:20:19.210361392+11:00","level":"INFO","msg":"fileTransfer: Close: file transfer manager closed"}
+{"time":"2026-02-19T08:20:19.503268074+11:00","level":"INFO","msg":"handler: closed","stream_id":"83s60txc"}
+{"time":"2026-02-19T08:20:19.503284425+11:00","level":"INFO","msg":"writer: Close: closed","stream_id":"83s60txc"}
+{"time":"2026-02-19T08:20:19.503335101+11:00","level":"INFO","msg":"sender: closed","stream_id":"83s60txc"}
+{"time":"2026-02-19T08:20:19.503491657+11:00","level":"INFO","msg":"stream: closed","id":"83s60txc"}
