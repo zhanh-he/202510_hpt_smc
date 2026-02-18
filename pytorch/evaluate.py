@@ -4,7 +4,7 @@ sys.path.insert(1, os.path.join(sys.path[0], '../utils'))
 import numpy as np
 import torch
 from pytorch_utils import move_data_to_device, append_to_dict
-from calculate_scores import frame_max_metrics__from_list, onset_pick_metrics_from_list
+from calculate_scores import frame_max_metrics_from_list, onset_pick_metrics_from_list
 
 def _segments_from_output(output_dict):
     """Convert batched output/target rolls to per-segment dicts used by Kim metrics."""
@@ -43,10 +43,8 @@ def _kim_metrics_from_segments(output_dict_list, target_dict_list):
     """Run the same Kim-style metrics used in calculate_scores."""
     if not output_dict_list or not target_dict_list:
         return {}
-
-    frame_max_err, frame_max_std = frame_max_metrics__from_list(output_dict_list, target_dict_list)
+    frame_max_err, frame_max_std = frame_max_metrics_from_list(output_dict_list, target_dict_list)
     onset_masked_error, onset_masked_std = onset_pick_metrics_from_list(output_dict_list, target_dict_list)
-
     stats = {
         'frame_max_error': round(frame_max_err, 4),
         'frame_max_std': round(frame_max_std, 4),

@@ -120,7 +120,7 @@ def log_velocity_rolls(cfg, iteration, batch_output_dict, batch_data_dict):
         ("Post-Proc Frame-Pick", frame_pick_img),
         ("Post-Proc Onset-Pick", onset_pick_img),
     ]
-    for ax, (title, data) in zip(axes, specs):
+    for ax, (title, data) in zip(np.ravel(axes), specs):
         im = ax.imshow(
             data.T,
             aspect="auto",

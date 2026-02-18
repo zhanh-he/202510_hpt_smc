@@ -115,7 +115,7 @@ def get_midi_sound_profile(midi_vel_roll: np.ndarray) -> List[Dict[str, np.ndarr
 
 def gt_to_note_list(output_dict_list: Sequence[Dict[str, np.ndarray]], target_list: Sequence[Dict[str, np.ndarray]]) -> Tuple[float, float, List[Dict[str, Any]], float, float, float, float, float, float]:
     """Backward-compatible wrapper for legacy callers."""
-    frame_max_error, std_max_error = frame_max_metrics__from_list(output_dict_list, target_list)
+    frame_max_error, std_max_error = frame_max_metrics_from_list(output_dict_list, target_list)
     error_profile, f1, precision, recall, frame_f1, frame_precision, frame_recall = detailed_f1_metrics_from_list(output_dict_list, target_list)
     return (frame_max_error, std_max_error,
         error_profile, f1, precision, recall, frame_f1, frame_precision, frame_recall)
@@ -152,7 +152,7 @@ def _collect_eval_arrays(output_dict_list: Sequence[Dict[str, np.ndarray]], targ
     return score, estimation, pedal, frame_mask
 
 
-def frame_max_metrics__from_list(output_dict_list: Sequence[Dict[str, np.ndarray]], target_list: Sequence[Dict[str, np.ndarray]]) -> Tuple[float, float]:
+def frame_max_metrics_from_list(output_dict_list: Sequence[Dict[str, np.ndarray]], target_list: Sequence[Dict[str, np.ndarray]]) -> Tuple[float, float]:
     """Compute only frame-max MAE/STD (lightweight path for train-time evaluation)."""
     score, estimation, _, _ = _collect_eval_arrays(output_dict_list, target_list)
     if score.size == 0:
@@ -358,7 +358,7 @@ class KimStyleEvaluator:
         output_dict_list = [output_entry]
         target_dict_list = [target_entry]
 
-        frame_max_error, frame_max_std = frame_max_metrics__from_list(output_dict_list, target_dict_list)
+        frame_max_error, frame_max_std = frame_max_metrics_from_list(output_dict_list, target_dict_list)
         error_profile, f1, precision, recall, frame_mask_f1, frame_mask_precision, frame_mask_recall = detailed_f1_metrics_from_list(output_dict_list, target_dict_list)
         onset_masked_error, onset_masked_std = onset_pick_metrics_from_list(output_dict_list, target_dict_list)
 
