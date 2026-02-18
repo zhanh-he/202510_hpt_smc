@@ -14,7 +14,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from feature_extractor import get_feature_extractor_and_bins
-from score_inf.utils import safe_logit
 
 
 class Block(nn.Module):
@@ -269,5 +268,4 @@ class DynestAudioCNN(nn.Module):
             logits = logits[:, :target_len, :]
 
         velocity = torch.sigmoid(logits)
-        safe_logits = safe_logit(velocity)
-        return {"velocity_output": velocity, "velocity_logits": safe_logits}
+        return {"velocity_output": velocity, "velocity_logits": logits}

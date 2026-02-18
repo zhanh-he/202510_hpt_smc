@@ -2,7 +2,8 @@ import os
 import sys
 sys.path.insert(1, os.path.join(sys.path[0], '../utils'))
 import numpy as np
-from pytorch_utils import forward_dataloader
+import torch
+from pytorch_utils import move_data_to_device, append_to_dict
 from calculate_scores import gt_to_note_list, eval_from_list
 
 def _segments_from_output(output_dict):
@@ -69,28 +70,81 @@ def _kim_metrics_from_segments(segments, targets):
 
 
 class SegmentEvaluator(object):
-    
-    def __init__(self, model, cfg):
+
+    def __init__(self, model, cfg, score_inf: bool = False):
         """Evaluate segment-wise metrics.
-        Args: model: object
-              batch_size: int
+        Args:
+            model: nn.Module
+            cfg: OmegaConf config
+            score_inf: set True for ScoreInfWrapper (expects cond dict)
         """
         self.model = model
         self.batch_size = cfg.exp.batch_size
         self.input2 = cfg.model.input2
         self.input3 = cfg.model.input3
+        self.score_inf = score_inf
+
+    def _forward_score_inf(self, batch_data_dict, device):
+        audio = move_data_to_device(batch_data_dict["waveform"], device)
+        cond = {
+            "onset": move_data_to_device(batch_data_dict["onset_roll"], device),
+            "frame": move_data_to_device(batch_data_dict.get("frame_roll"), device) if batch_data_dict.get("frame_roll") is not None else None,
+            "exframe": move_data_to_device(batch_data_dict.get("exframe_roll"), device) if batch_data_dict.get("exframe_roll") is not None else None,
+        }
+        base_inputs = []
+        if self.input2 is not None:
+            base_inputs.append(move_data_to_device(batch_data_dict[f"{self.input2}_roll"], device))
+        if self.input3 is not None:
+            base_inputs.append(move_data_to_device(batch_data_dict[f"{self.input3}_roll"], device))
+
+        with torch.no_grad():
+            self.model.eval()
+            out = self.model(audio, cond, *base_inputs)
+
+        if "velocity_output" not in out and "vel_corr" in out:
+            out = dict(out)
+            out["velocity_output"] = out["vel_corr"]
+        return out
+
+    def _forward_legacy(self, batch_data_dict, device):
+        batch_input1 = move_data_to_device(batch_data_dict["waveform"], device)
+        batch_input2 = move_data_to_device(batch_data_dict[f"{self.input2}_roll"], device) if self.input2 is not None else None
+        batch_input3 = move_data_to_device(batch_data_dict[f"{self.input3}_roll"], device) if self.input3 is not None else None
+
+        with torch.no_grad():
+            self.model.eval()
+            if batch_input2 is not None:
+                if batch_input3 is not None:
+                    out = self.model(batch_input1, batch_input2, batch_input3)
+                else:
+                    out = self.model(batch_input1, batch_input2)
+            else:
+                out = self.model(batch_input1)
+        if "velocity_output" not in out and "vel_corr" in out:
+            out = dict(out)
+            out["velocity_output"] = out["vel_corr"]
+        return out
 
     def evaluate(self, dataloader):
-        """Evaluate over a few mini-batches.
-        Args: dataloader: object, used to generate mini-batches for evaluation.
-        Returns: statistics: dict, e.g. {
-            'frame_f1': 0.800, 
-            (if exist) 'onset_f1': 0.500, 
-            (if exist) 'offset_f1': 0.300, 
-            ...}
-        """
+        """Evaluate over dataloader and compute Kim metrics."""
         statistics = {}
-        output_dict = forward_dataloader(self.model, dataloader, self.batch_size, self.input2, self.input3)
+        output_dict = {}
+        device = next(self.model.parameters()).device
+
+        for batch_data_dict in dataloader:
+            out = self._forward_score_inf(batch_data_dict, device) if self.score_inf else self._forward_legacy(batch_data_dict, device)
+
+            for key, val in out.items():
+                if "_list" not in key:
+                    append_to_dict(output_dict, key, val.data.cpu().numpy())
+
+            for target_type, tval in batch_data_dict.items():
+                if 'roll' in target_type or 'reg_distance' in target_type or 'reg_tail' in target_type:
+                    append_to_dict(output_dict, target_type, tval)
+
+        for key in output_dict.keys():
+            output_dict[key] = np.concatenate(output_dict[key], axis=0)
+
         if 'velocity_output' in output_dict:
             segments, targets = _segments_from_output(output_dict)
             statistics.update(_kim_metrics_from_segments(segments, targets))

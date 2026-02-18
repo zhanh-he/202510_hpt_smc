@@ -21,12 +21,6 @@ score_informed:
   method: scrr
   params: {}
 
-loss:
-  w_l1: 1.0
-  w_bce: 0.5
-  w_delta: 0.01
-  use_huber: false
-
 optim:
   name: adamw
   lr: 0.001

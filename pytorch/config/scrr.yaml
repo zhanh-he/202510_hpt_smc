@@ -20,9 +20,3 @@ score_informed:
 #     use_film: true
 #     norm: groupnorm
 #     mask_outside_onset: true
-
-# loss:
-#   w_huber: 1.0
-#   huber_delta: 0.1
-#   w_bce: 0.5
-#   w_delta_l1: 0.01

@@ -19,8 +19,6 @@ exp:
   optim: "adam" # "adam", "ranger", Ranger: default betas=(0.9, 0.999), eps=1e-08, weight_decay=0.
   decay: True # False
   reduce_iteration: 10_000 # 6_000
-  loss_type: "velocity_bce"
-  kim_loss_alpha: 0.5  # Weight of BCE term in Kim et al. 2024 BCE+L1 loss
   random_seed: 86
 
   mini_data: False # True when developing model
@@ -103,6 +101,19 @@ score:
   onset_tolerance: 0.05 # 1
   offset_ratio: 0.2 # null | 0.2
   offset_min_tolerance: # 0.05 # 1
+
+# ---------------------------
+# Loss configuration
+# ---------------------------
+loss:
+  loss_type: "velocity_bce"
+  kim_loss_alpha: 0.5  # Weight of BCE term in Kim et al. 2024 BCE+L1 loss
+  w_l1: 1.0
+  w_bce: 0.5
+  w_delta: 0.01  # set 0 to disable delta regularization
+  use_huber: true
+  w_huber: 1.0
+  huber_delta: 0.1
 
 # ---------------------------
 # Score-informed training (train_score_inf.py)

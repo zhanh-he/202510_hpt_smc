@@ -14,9 +14,8 @@ from pytorch_utils import move_data_to_device
 from data_generator import Maestro_Dataset, SMD_Dataset, MAPS_Dataset, Augmentor, Sampler, EvalSampler, collate_fn
 from utilities import create_folder, create_logging, RegressionPostProcessor
 
-# from model_HPT import Regress_onset_offset_frame_velocity_CRNN, Regress_pedal_CRNN
-from model_HPT import Single_Velocity_HPT, Dual_Velocity_HPT, Triple_Velocity_HPT
-from model_FilmUnet import FiLMUNetPretrained
+from model_HPT import Single_Velocity_HPT
+# from model_FilmUnet import FiLMUNetPretrained
 from model_DynEst import DynestAudioCNN
 from amt_modules.hppnet_adapter import HPPNet_SP
 
@@ -115,7 +114,7 @@ def _write_training_stats(cfg, checkpoints_dir, model_name):
         f"dev_env             :{getattr(cfg.exp, 'dev_env', 'local')}",
         f"condition_check     :{condition_check}",
         f"condition_net       :{condition_net}",
-        f"loss_type           :{cfg.exp.loss_type}",
+        f"loss_type           :{getattr(cfg.loss, 'loss_type', getattr(cfg.exp, 'loss_type', ''))}",
         f"condition_type      :{condition_type}",
         f"batch_size          :{cfg.exp.batch_size}",
         f"hop_seconds         :{cfg.feature.hop_seconds}",
@@ -134,7 +133,7 @@ def train(cfg):
     # Arugments & parameters
     device = torch.device('cuda') if cfg.exp.cuda and torch.cuda.is_available() else torch.device('cpu')
     model = eval(cfg.model.name)(cfg)
-    model.kim_loss_alpha = getattr(cfg.exp, "kim_loss_alpha", 0.5)
+    model.kim_loss_alpha = getattr(cfg.loss, "kim_loss_alpha", getattr(cfg.exp, "kim_loss_alpha", 0.5))
     model = model.to(device)
     optimizer = Adam(model.parameters(), lr=cfg.exp.learning_rate)
     
