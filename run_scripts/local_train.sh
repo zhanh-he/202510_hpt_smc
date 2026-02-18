@@ -12,11 +12,6 @@ python pytorch/train_score_inf.py model.type="hpt" \
 
 python pytorch/train_score_inf.py model.type="hpt" \
   score_informed.method="scrr" \
-  model.input2=onset model.input3=frame \
-  loss.loss_type="score_inf_custom"
-
-python pytorch/train_score_inf.py model.type="hpt" \
-  score_informed.method="scrr" \
   model.input2=onset model.input3=exframe \
   loss.loss_type="score_inf_custom"
 
@@ -28,24 +23,13 @@ python pytorch/train_score_inf.py model.type="hpt" \
 
 python pytorch/train_score_inf.py model.type="hpt" \
   score_informed.method="dual_gated" \
-  model.input2=onset model.input3=frame \
-  loss.loss_type="score_inf_custom"
-
-python pytorch/train_score_inf.py model.type="hpt" \
-  score_informed.method="dual_gated" \
   model.input2=onset model.input3=exframe \
   loss.loss_type="score_inf_custom"
-
 
 # --------- Note Editor ---------
 python pytorch/train_score_inf.py model.type="hpt" \
   score_informed.method="note_editor" \
   model.input2=onset model.input3=null \
-  loss.loss_type="score_inf_custom"
-
-python pytorch/train_score_inf.py model.type="hpt" \
-  score_informed.method="note_editor" \
-  model.input2=onset model.input3=frame \
   loss.loss_type="score_inf_custom"
 
 python pytorch/train_score_inf.py model.type="hpt" \
@@ -57,11 +41,6 @@ python pytorch/train_score_inf.py model.type="hpt" \
 python pytorch/train_score_inf.py model.type="hpt" \
   score_informed.method="bilstm" \
   model.input2=onset model.input3=null \
-  loss.loss_type="score_inf_custom"
-
-python pytorch/train_score_inf.py model.type="hpt" \
-  score_informed.method="bilstm" \
-  model.input2=onset model.input3=frame \
   loss.loss_type="score_inf_custom"
 
 python pytorch/train_score_inf.py model.type="hpt" \

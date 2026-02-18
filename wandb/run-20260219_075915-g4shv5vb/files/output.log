@@ -1,0 +1,19 @@
+root        : INFO     Number of GPUs available: 1
+root        : INFO     Train phase switched to: joint at iteration 0
+0 tensor(0.3804, device='cuda:0', grad_fn=<AddBackward0>)
+root        : INFO     ------------------------------------
+root        : INFO     Iteration: 0/120000
+root        : INFO         Train Stat: {'velocity_mae': 19.305, 'velocity_std': 15.3754}
+root        : INFO         Valid Maestro Stat: {'velocity_mae': 18.7984, 'velocity_std': 15.5755}
+root        : INFO         Valid SMD Stat: {'velocity_mae': 18.5994, 'velocity_std': 15.312}
+root        : INFO         Valid MAPS Stat: {'velocity_mae': 19.4398, 'velocity_std': 14.1428}
+root        : INFO     Train time: 4.084 s, validate time: 277.784 s
+root        : INFO     Model saved to /media/mengh/SharedData/zhanh/202510_hpt_data/workspaces/checkpoints/hpt+onset+exframe+score_note_editor/0_iterations.pth
+1 tensor(0.3813, device='cuda:0', grad_fn=<AddBackward0>)
+2 tensor(0.3817, device='cuda:0', grad_fn=<AddBackward0>)
+3 tensor(0.3741, device='cuda:0', grad_fn=<AddBackward0>)
+4 tensor(0.3808, device='cuda:0', grad_fn=<AddBackward0>)
+5 tensor(0.3702, device='cuda:0', grad_fn=<AddBackward0>)
+6 tensor(0.3712, device='cuda:0', grad_fn=<AddBackward0>)
+7 tensor(0.3729, device='cuda:0', grad_fn=<AddBackward0>)
+8 tensor(0.3713, device='cuda:0', grad_fn=<AddBackward0>)

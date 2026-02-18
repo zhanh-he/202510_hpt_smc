@@ -1,0 +1,7 @@
+{"time":"2026-02-19T07:59:16.075970236+11:00","level":"INFO","msg":"stream: starting","core version":"0.19.3","symlink path":"/media/mengh/SharedData/zhanh/202510_hpt_smc/wandb/run-20260219_075915-g4shv5vb/logs/debug-core.log"}
+{"time":"2026-02-19T07:59:16.179544785+11:00","level":"INFO","msg":"created new stream","id":"g4shv5vb"}
+{"time":"2026-02-19T07:59:16.179609778+11:00","level":"INFO","msg":"stream: started","id":"g4shv5vb"}
+{"time":"2026-02-19T07:59:16.179631339+11:00","level":"INFO","msg":"writer: Do: started","stream_id":"g4shv5vb"}
+{"time":"2026-02-19T07:59:16.179661827+11:00","level":"INFO","msg":"handler: started","stream_id":"g4shv5vb"}
+{"time":"2026-02-19T07:59:16.179650886+11:00","level":"INFO","msg":"sender: started","stream_id":"g4shv5vb"}
+{"time":"2026-02-19T07:59:16.704641903+11:00","level":"INFO","msg":"Starting system monitor"}
