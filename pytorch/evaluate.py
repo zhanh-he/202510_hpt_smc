@@ -91,15 +91,10 @@ class SegmentEvaluator(object):
             "frame": move_data_to_device(batch_data_dict.get("frame_roll"), device) if batch_data_dict.get("frame_roll") is not None else None,
             "exframe": move_data_to_device(batch_data_dict.get("exframe_roll"), device) if batch_data_dict.get("exframe_roll") is not None else None,
         }
-        base_inputs = []
-        if self.input2 is not None:
-            base_inputs.append(move_data_to_device(batch_data_dict[f"{self.input2}_roll"], device))
-        if self.input3 is not None:
-            base_inputs.append(move_data_to_device(batch_data_dict[f"{self.input3}_roll"], device))
 
         with torch.no_grad():
             self.model.eval()
-            out = self.model(audio, cond, *base_inputs)
+            out = self.model(audio, cond)
 
         if "velocity_output" not in out and "vel_corr" in out:
             out = dict(out)

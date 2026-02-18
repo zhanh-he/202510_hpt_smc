@@ -74,12 +74,16 @@ model:
   # name options:
   #   Single_Velocity_HPT
   #   DynestAudioCNN
-  #   FiLMUNetPretrained  -> set input2=frame (or onset) and point pretrained_checkpoint below
-  #   HPPNet_SP           -> audio-only HPPNet (velocity head only, no input2/input3)
+  #   HPPNet_SP
   # -------------------------------------------------------------------------
   name: "Single_Velocity_HPT"
-  input2: null # onset, offset, frame, exframe, null - None
-  input3: null # onset, offset, frame, exframe, null - None
+  # score-inf condition selector:
+  # null+null => method defaults (typically onset+frame+exframe in method code).
+  # if either input is set, it overrides method cond selection.
+  # for scrr/dual_gated/bilstm, onset is auto-included when missing.
+  input2: null # frame | exframe | onset | null
+  input3: null # frame | exframe | onset | null
+  kim_condition: "frame" # for FiLMUNetPretrained only: frame | none
   pretrained_checkpoint: "/media/datadisk/home/22828187/zhanh/202510_hpt_data/workspaces/checkpoints/FiLMUNetPretrained+frame/1000000_iterations.pth"
   hppnet_model_size: 128
 

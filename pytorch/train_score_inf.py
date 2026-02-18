@@ -102,8 +102,9 @@ def _write_training_stats(cfg, checkpoints_dir: str, model_name: str) -> None:
     file_name = file_name or model_name
 
     condition_inputs = [getattr(cfg.model, "input2", None), getattr(cfg.model, "input3", None)]
-    condition_check = any(condition_inputs)
-    condition_type = next((c for c in condition_inputs if c), "none")
+    condition_selected = [c for c in condition_inputs if c]
+    condition_check = bool(condition_selected)
+    condition_type = "+".join(condition_selected) if condition_selected else "default"
     condition_net = getattr(cfg.model, "condition_net", "N/A")
 
     score_cfg = getattr(cfg, "score_informed", None)
@@ -204,6 +205,26 @@ def _normalize_adapter_cfg(cfg) -> Dict[str, Any]:
     return {"type": "hpt", "params": {}}
 
 
+def _inject_cond_from_input23(cfg, method: str, params: Dict[str, Any]) -> Dict[str, Any]:
+    cond_selected = []
+    for key in [cfg.model.input2, cfg.model.input3]:
+        if key and key not in cond_selected:
+            cond_selected.append(key)
+
+    if not cond_selected:
+        return params
+
+    merged = dict(params)
+    if method in ("scrr", "dual_gated", "bilstm"):
+        cond_keys = list(cond_selected)
+        if "onset" not in cond_keys:
+            cond_keys = ["onset"] + cond_keys
+        merged["cond_keys"] = cond_keys
+    elif method == "note_editor":
+        merged["use_cond_feats"] = [k for k in cond_selected if k != "onset"]
+    return merged
+
+
 def build_dataloaders(cfg, resume_sampler_state=None):
     def get_sampler(cfg, purpose: str, split: str, is_eval: Optional[str] = None):
         sampler_mapping = {
@@ -264,7 +285,7 @@ def build_dataloaders(cfg, resume_sampler_state=None):
     return train_loader, train_sampler, eval_loaders
 
 
-def _prepare_batch(cfg, batch_data_dict, device: torch.device) -> Tuple[torch.Tensor, Dict[str, torch.Tensor], Dict[str, torch.Tensor], Tuple[torch.Tensor, ...]]:
+def _prepare_batch(batch_data_dict, device: torch.device) -> Tuple[torch.Tensor, Dict[str, torch.Tensor], Dict[str, torch.Tensor]]:
     batch_torch = {k: move_data_to_device(v, device) for k, v in batch_data_dict.items()}
     audio = batch_torch["waveform"]
     cond = {
@@ -272,12 +293,7 @@ def _prepare_batch(cfg, batch_data_dict, device: torch.device) -> Tuple[torch.Te
         "frame": batch_torch.get("frame_roll"),
         "exframe": batch_torch.get("exframe_roll"),
     }
-    base_inputs = []
-    if getattr(cfg.model, "input2", None):
-        base_inputs.append(batch_torch[f"{cfg.model.input2}_roll"])
-    if getattr(cfg.model, "input3", None):
-        base_inputs.append(batch_torch[f"{cfg.model.input3}_roll"])
-    return audio, cond, batch_torch, tuple(base_inputs)
+    return audio, cond, batch_torch
 
 
 def train(cfg):
@@ -307,6 +323,7 @@ def train(cfg):
             params = getattr(score_cfg, "params", {}) or {}
             freeze_base = bool(getattr(score_cfg, "freeze_base", False))
 
+    params = _inject_cond_from_input23(cfg, method, params)
     post = build_score_inf(method, params).to(device)
 
     if freeze_base:
@@ -423,8 +440,8 @@ def train(cfg):
                     param_group["lr"] *= 0.9
 
         model.train()
-        audio, cond, batch_torch, base_inputs = _prepare_batch(cfg, batch_data_dict, device)
-        out = model(audio, cond, *base_inputs)
+        audio, cond, batch_torch = _prepare_batch(batch_data_dict, device)
+        out = model(audio, cond)
         loss = loss_fn(cfg, out, batch_torch, cond_dict=cond)
 
         print(iteration, loss)

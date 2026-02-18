@@ -269,8 +269,12 @@ def _predict_velocity_from_alignment(
     velocity_method: str,
 ):
     target_dict, _, _ = prepare_aux_rolls(cfg, midi_events_time, midi_events, duration)
-    input2 = select_condition_roll(target_dict, cfg.model.input2)
-    input3 = select_condition_roll(target_dict, cfg.model.input3)
+    if cfg.model.name in {"FiLMUNetPretrained", "FiLMUNet"}:
+        input2 = target_dict["frame_roll"] if cfg.model.kim_condition == "frame" else None
+        input3 = None
+    else:
+        input2 = select_condition_roll(target_dict, cfg.model.input2)
+        input3 = select_condition_roll(target_dict, cfg.model.input3)
 
     transcribed = transcriber.transcribe(audio, input2=input2, input3=input3)
     velocity_roll = transcribed["output_dict"]["velocity_output"]

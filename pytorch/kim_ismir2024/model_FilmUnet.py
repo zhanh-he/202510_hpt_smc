@@ -8,7 +8,7 @@ import torch
 import torch.nn as nn
 
 # Inject a lightweight torchlibrosa shim so the original FiLM code can import it.
-_VENDOR_ROOT = Path(__file__).resolve().parent / "kim_ismir2024"
+_VENDOR_ROOT = Path(__file__).resolve().parent
 _AUDIO_SRC = _VENDOR_ROOT / "src"
 if not _AUDIO_SRC.exists():
     raise FileNotFoundError(f"Missing vendored FiLM sources at {_AUDIO_SRC}")
@@ -36,7 +36,7 @@ class FiLMUNetPretrained(nn.Module):
     def __init__(self, cfg):
         super().__init__()
         self.cfg = cfg
-        self._maybe_override_conditioning(cfg)
+        self._set_conditioning(cfg.model.kim_condition)
 
         self.model = ScoreInformedMidiVelocityEstimator(
             frames_per_second=kim_config.frames_per_second,
@@ -47,14 +47,10 @@ class FiLMUNetPretrained(nn.Module):
         self.model.load_state_dict(state_dict, strict=True)
 
     @staticmethod
-    def _maybe_override_conditioning(cfg) -> None:
-        """Sync conditioning flags with whatever extra inputs Hydra enables."""
-        wants_condition = cfg.model.input2 is not None
-        kim_config.condition_check = wants_condition
-        if wants_condition and cfg.model.input2:
-            kim_config.condition_type = cfg.model.input2
-        else:
-            kim_config.condition_type = "onset"
+    def _set_conditioning(kim_condition: str) -> None:
+        """FiLM U-Net supports two routes: frame-conditioned or audio-only."""
+        kim_config.condition_check = kim_condition == "frame"
+        kim_config.condition_type = "frame"
 
     @staticmethod
     def _resolve_checkpoint_path(cfg) -> Path:

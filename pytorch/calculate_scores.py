@@ -294,8 +294,12 @@ class KimStyleEvaluator:
     def _prepare_inputs(self, target_dict: Dict[str, np.ndarray]) -> Tuple[Optional[np.ndarray], Optional[np.ndarray]]:
         target_dict["exframe_roll"] = target_dict["frame_roll"] * (1 - target_dict["onset_roll"])
 
-        input2 = target_dict.get(f"{self.cfg.model.input2}_roll") if self.cfg.model.input2 else None
-        input3 = target_dict.get(f"{self.cfg.model.input3}_roll") if self.cfg.model.input3 else None
+        if self.cfg.model.name in {"FiLMUNetPretrained", "FiLMUNet"}:
+            input2 = target_dict["frame_roll"] if self.cfg.model.kim_condition == "frame" else None
+            input3 = None
+        else:
+            input2 = target_dict.get(f"{self.cfg.model.input2}_roll") if self.cfg.model.input2 else None
+            input3 = target_dict.get(f"{self.cfg.model.input3}_roll") if self.cfg.model.input3 else None
         return input2, input3
 
     def _process_file(self, hdf5_path: str) -> Optional[Dict[str, np.ndarray]]:
