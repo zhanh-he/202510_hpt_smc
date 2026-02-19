@@ -8,7 +8,7 @@ import numpy as np
 from hydra import compose, initialize
 from sklearn.metrics import f1_score, precision_score, recall_score
 from tqdm import tqdm
-
+from inference import VeloTranscription
 from utilities import (
     TargetProcessor,
     create_folder,
@@ -30,7 +30,6 @@ def note_level_l1_per_window(
         output_segment["velocity_output"].shape[0],
         target_segment["velocity_roll"].shape[0],
     )
-
     for nth_frame in range(frames):
         gt_onset_frame = target_segment["onset_roll"][nth_frame]
         if np.count_nonzero(gt_onset_frame) == 0:
@@ -42,7 +41,6 @@ def note_level_l1_per_window(
         note_error = np.abs(pred_onset - gt_onset)
         num_notes += int(np.count_nonzero(gt_onset_frame))
         error_rows.append(note_error[np.newaxis, :])
-
     if error_rows:
         segment_error = np.concatenate(error_rows, axis=0)
     else:
@@ -111,14 +109,6 @@ def get_midi_sound_profile(midi_vel_roll: np.ndarray) -> List[Dict[str, np.ndarr
             vel = midi_vel_roll[pitch, duration[0]]
             sound_profile.append({"pitch": pitch, "velocity": vel, "duration": duration})
     return sound_profile
-
-
-def gt_to_note_list(output_dict_list: Sequence[Dict[str, np.ndarray]], target_list: Sequence[Dict[str, np.ndarray]]) -> Tuple[float, float, List[Dict[str, Any]], float, float, float, float, float, float]:
-    """Backward-compatible wrapper for legacy callers."""
-    frame_max_error, std_max_error = frame_max_metrics_from_list(output_dict_list, target_list)
-    error_profile, f1, precision, recall, frame_f1, frame_precision, frame_recall = detailed_f1_metrics_from_list(output_dict_list, target_list)
-    return (frame_max_error, std_max_error,
-        error_profile, f1, precision, recall, frame_f1, frame_precision, frame_recall)
 
 
 def _collect_eval_arrays(output_dict_list: Sequence[Dict[str, np.ndarray]], target_list: Sequence[Dict[str, np.ndarray]]) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
@@ -213,7 +203,6 @@ def detailed_f1_metrics_from_list(output_dict_list: Sequence[Dict[str, np.ndarra
              "classification_check": classification_check,
             } # type: ignore
         )
-
     return error_profile, f1, precision, recall, frame_f1, frame_precision, frame_recall
 
 
@@ -287,7 +276,6 @@ class KimStyleEvaluator:
         if not self.checkpoint_path.exists():
             raise FileNotFoundError(f"Checkpoint not found: {self.checkpoint_path}")
 
-        from inference import VeloTranscription
         self.transcriptor = VeloTranscription(str(self.checkpoint_path), cfg)
 
         hdf5_dir = resolve_hdf5_dir(cfg.exp.workspace, cfg.dataset.test_set, cfg.feature.sample_rate)
@@ -305,7 +293,6 @@ class KimStyleEvaluator:
 
     def _prepare_inputs(self, target_dict: Dict[str, np.ndarray]) -> Tuple[Optional[np.ndarray], Optional[np.ndarray]]:
         target_dict["exframe_roll"] = target_dict["frame_roll"] * (1 - target_dict["onset_roll"])
-
         if self.cfg.model.type in {"filmunet_pretrained", "filmunet"}:
             input2 = target_dict["frame_roll"] if self.cfg.model.kim_condition == "frame" else None
             input3 = None
