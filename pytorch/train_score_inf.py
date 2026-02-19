@@ -7,15 +7,13 @@ import time
 import logging
 import torch
 from torch.optim import Adam, AdamW
-import matplotlib.pyplot as plt
-import numpy as np
 
 from typing import Dict, Any, Optional, Tuple
 from hydra import initialize, compose
 from omegaconf import OmegaConf
 import wandb
 
-from pytorch_utils import move_data_to_device
+from pytorch_utils import move_data_to_device, log_velocity_rolls
 from data_generator import (Maestro_Dataset, SMD_Dataset, MAPS_Dataset,
      Sampler, EvalSampler, collate_fn)
 from utilities import create_folder, create_logging, get_model_name
@@ -38,120 +36,9 @@ def init_wandb(cfg):
     )
 
 
-def _note_segments(active_mask: np.ndarray) -> list:
-    padded = np.pad(active_mask.astype(np.int8), (1, 1), mode="constant")
-    diff = np.diff(padded)
-    starts = np.where(diff == 1)[0]
-    ends = np.where(diff == -1)[0]
-    return list(zip(starts.tolist(), ends.tolist()))
-
-
-def _post_process_rolls(
-    pred_vis: np.ndarray,
-    target_raw: np.ndarray,
-    onset_roll: np.ndarray,
-) -> Tuple[np.ndarray, np.ndarray]:
-    frames, keys = target_raw.shape
-    frame_pick_roll = np.zeros_like(pred_vis, dtype=np.float32)
-    onset_pick_roll = np.zeros_like(pred_vis, dtype=np.float32)
-
-    for key in range(keys):
-        note_active = target_raw[:, key] > 0
-        for start, end in _note_segments(note_active):
-            if end <= start:
-                continue
-            pred_note = pred_vis[start:end, key].copy()
-            pred_note[pred_note <= 1e-4] = 0.0
-
-            frame_val = float(np.max(pred_note)) if pred_note.size else 0.0
-            frame_pick_roll[start:end, key] = frame_val
-
-            onset_mask = onset_roll[start:end, key] > 0
-            if np.any(onset_mask):
-                onset_val = float(np.max(pred_note[onset_mask]))
-            else:
-                onset_val = 0.0
-            onset_pick_roll[start:end, key] = onset_val
-
-    return frame_pick_roll, onset_pick_roll
-
-
-def log_velocity_rolls(cfg, iteration, batch_output_dict, batch_data_dict):
-    """Log prediction vs target velocity rolls to WandB at configured intervals."""
-    interval = getattr(cfg.wandb, "log_velocity_interval", None) if hasattr(cfg, "wandb") else None
-    if not interval or interval <= 0 or wandb.run is None:
-        return
-    if iteration % interval != 0:
-        return
-
-    pred = batch_output_dict.get("velocity_output")
-    if pred is None:
-        pred = batch_output_dict.get("vel_corr")
-    target = batch_data_dict.get("velocity_roll")
-    onset = batch_data_dict.get("onset_roll")
-    if pred is None or target is None:
-        return
-
-    velocity_scale = getattr(cfg.feature, "velocity_scale", 128)
-    pred_img = pred[0].detach().cpu().numpy()
-    pred_max = float(np.max(pred_img))
-    pred_min = float(np.min(pred_img))
-    if pred_max > 1.0 + 1e-3 or pred_min < -1e-3:
-        pred_vis = np.clip(pred_img / velocity_scale, 0.0, 1.0)
-    else:
-        pred_vis = np.clip(pred_img, 0.0, 1.0)
-    target_raw = target[0].detach().cpu().numpy()
-    if float(np.max(target_raw)) <= 1.0 + 1e-3:
-        target_raw = target_raw * velocity_scale
-    target_img = np.clip(target_raw / velocity_scale, 0.0, 1.0)
-    onset_roll = onset[0].detach().cpu().numpy() if onset is not None else np.zeros_like(target_raw)
-
-    frame_pick_img, onset_pick_img = _post_process_rolls(
-        pred_vis=pred_vis,
-        target_raw=target_raw,
-        onset_roll=onset_roll,
-    )
-
-
-    fig, axes = plt.subplots(2, 2, figsize=(10, 8))
-    specs = [
-        ("Ground Truth", target_img),
-        ("Prediction", pred_vis),
-        ("Post-Proc Frame-Pick", frame_pick_img),
-        ("Post-Proc Onset-Pick", onset_pick_img),
-    ]
-    for ax, (title, data) in zip(np.ravel(axes), specs):
-        im = ax.imshow(
-            data.T,
-            aspect="auto",
-            origin="lower",
-            interpolation="nearest",
-            vmin=0.0,
-            vmax=1.0,
-        )
-        ax.set_title(title)
-        ax.set_xlabel("Frame")
-        ax.set_ylabel("Key")
-        fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-    fig.suptitle(f"Velocity roll @ iter {iteration}")
-    fig.tight_layout()
-
-    wandb.log(
-        {
-            "velocity_roll_comparison": wandb.Image(fig),
-        },
-        step=iteration,
-    )
-    plt.close(fig)
-
-
-def _select_velocity_metrics(statistics: Dict[str, float]) -> Dict[str, float]:
-    keep_keys = (
-        "frame_max_error",
-        "frame_max_std",
-        "onset_masked_error",
-        "onset_masked_std",
-    )
+def _select_velocity_metrics(statistics):
+    keep_keys = ("frame_max_error", "frame_max_std",
+        "onset_masked_error", "onset_masked_std")
     return {k: statistics[k] for k in keep_keys if k in statistics}
 
 
@@ -400,9 +287,6 @@ def train(cfg):
     #     cfg.exp.random_seed = 12
 
     train_loader, eval_loaders = build_dataloaders(cfg)
-    # for split, loader in eval_loaders.items():
-    #     max_eval_iters = getattr(loader.batch_sampler, "max_evaluate_iteration", None)
-    #     logging.info(f"Fast eval sampler [{split}] max_evaluate_iteration={max_eval_iters}")
 
     # Optimizer
     optim_cfg = getattr(cfg, "optim", None)
@@ -440,7 +324,7 @@ def train(cfg):
     early_phase = 0
     early_step = int(early_phase * 0.1) if early_phase > 0 else 0
 
-    evaluator = SegmentEvaluator(model, cfg, score_inf=True)
+    evaluator = SegmentEvaluator(model, cfg)
     loss_fn = get_loss_func(cfg=cfg)
     current_phase = None
 
@@ -499,8 +383,7 @@ def train(cfg):
             }
             if avg_train_loss is not None:
                 log_payload["train_loss"] = avg_train_loss
-            if wandb.run is not None:
-                wandb.log(log_payload)
+            wandb.log(log_payload)
 
             train_time = train_fin_time - train_bgn_time
             validate_time = time.time() - train_fin_time
@@ -522,8 +405,7 @@ def train(cfg):
         optimizer.zero_grad(set_to_none=True)
         iteration += 1
 
-    if wandb.run is not None:
-        wandb.finish()
+    wandb.finish()
 
 
 if __name__ == "__main__":

@@ -56,20 +56,18 @@ def _kim_metrics_from_segments(output_dict_list, target_dict_list):
 
 class SegmentEvaluator(object):
 
-    def __init__(self, model, cfg, score_inf: bool = False):
+    def __init__(self, model, cfg):
         """Evaluate segment-wise metrics.
         Args:
             model: nn.Module
             cfg: OmegaConf config
-            score_inf: set True for ScoreInfWrapper (expects cond dict)
         """
         self.model = model
         self.input2 = cfg.model.input2
         self.input3 = cfg.model.input3
-        self.score_inf = score_inf
         score_cfg = getattr(cfg, "score_informed", None)
         self.score_method = getattr(score_cfg, "method", "direct_output") if score_cfg is not None else "direct_output"
-        self.score_cond_keys = self._resolve_score_cond_keys() if self.score_inf else []
+        self.score_cond_keys = self._resolve_score_cond_keys()
 
     def _resolve_score_cond_keys(self):
         cond_selected = []
@@ -96,25 +94,6 @@ class SegmentEvaluator(object):
             out["velocity_output"] = out["vel_corr"]
         return out
 
-    def _forward_legacy(self, batch_data_dict, device):
-        batch_input1 = move_data_to_device(batch_data_dict["waveform"], device)
-        batch_input2 = move_data_to_device(batch_data_dict[f"{self.input2}_roll"], device) if self.input2 is not None else None
-        batch_input3 = move_data_to_device(batch_data_dict[f"{self.input3}_roll"], device) if self.input3 is not None else None
-
-        with torch.no_grad():
-            self.model.eval()
-            if batch_input2 is not None:
-                if batch_input3 is not None:
-                    out = self.model(batch_input1, batch_input2, batch_input3)
-                else:
-                    out = self.model(batch_input1, batch_input2)
-            else:
-                out = self.model(batch_input1)
-        if "velocity_output" not in out and "vel_corr" in out:
-            out = dict(out)
-            out["velocity_output"] = out["vel_corr"]
-        return out
-
     def evaluate(self, dataloader):
         """Evaluate over dataloader and compute Kim metrics."""
         output_dict = {}
@@ -122,7 +101,7 @@ class SegmentEvaluator(object):
         required_target_keys = ("velocity_roll", "frame_roll", "onset_roll", "pedal_frame_roll")
 
         for batch_data_dict in dataloader:
-            out = self._forward_score_inf(batch_data_dict, device) if self.score_inf else self._forward_legacy(batch_data_dict, device)
+            out = self._forward_score_inf(batch_data_dict, device)
             pred = out.get("velocity_output")
             if torch.is_tensor(pred):
                 append_to_dict(output_dict, "velocity_output", pred.data.cpu().numpy())

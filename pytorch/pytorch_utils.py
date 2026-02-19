@@ -1,5 +1,7 @@
 import numpy as np
 import torch
+import matplotlib.pyplot as plt
+import wandb
 
 def move_data_to_device(x, device):
     if torch.is_tensor(x):
@@ -86,3 +88,105 @@ def forward_velo(model, x1, x2, x3, batch_size):
 
     output_dict['velocity_output'] = np.concatenate(output_dict['velocity_output'], axis=0)
     return output_dict
+
+
+def _note_segments(active_mask):
+    padded = np.pad(active_mask.astype(np.int8), (1, 1), mode="constant")
+    diff = np.diff(padded)
+    starts = np.where(diff == 1)[0]
+    ends = np.where(diff == -1)[0]
+    return list(zip(starts.tolist(), ends.tolist()))
+
+
+def _post_process_rolls(pred_vis, target_raw, onset_roll):
+    _, keys = target_raw.shape
+    frame_pick_roll = np.zeros_like(pred_vis, dtype=np.float32)
+    onset_pick_roll = np.zeros_like(pred_vis, dtype=np.float32)
+
+    for key in range(keys):
+        note_active = target_raw[:, key] > 0
+        for start, end in _note_segments(note_active):
+            if end <= start:
+                continue
+            pred_note = pred_vis[start:end, key].copy()
+            pred_note[pred_note <= 1e-4] = 0.0
+
+            frame_val = float(np.max(pred_note)) if pred_note.size else 0.0
+            frame_pick_roll[start:end, key] = frame_val
+
+            onset_mask = onset_roll[start:end, key] > 0
+            if np.any(onset_mask):
+                onset_val = float(np.max(pred_note[onset_mask]))
+            else:
+                onset_val = 0.0
+            onset_pick_roll[start:end, key] = onset_val
+
+    return frame_pick_roll, onset_pick_roll
+
+
+def log_velocity_rolls(cfg, iteration, batch_output_dict, batch_data_dict):
+    """Log prediction vs target velocity rolls to WandB at configured intervals."""
+    interval = getattr(cfg.wandb, "log_velocity_interval", None) if hasattr(cfg, "wandb") else None
+    if not interval or interval <= 0:
+        return
+    if iteration % interval != 0:
+        return
+
+    pred = batch_output_dict.get("velocity_output")
+    if pred is None:
+        pred = batch_output_dict.get("vel_corr")
+    target = batch_data_dict.get("velocity_roll")
+    onset = batch_data_dict.get("onset_roll")
+    if pred is None or target is None:
+        return
+
+    velocity_scale = getattr(cfg.feature, "velocity_scale", 128)
+    pred_img = pred[0].detach().cpu().numpy()
+    pred_max = float(np.max(pred_img))
+    pred_min = float(np.min(pred_img))
+    if pred_max > 1.0 + 1e-3 or pred_min < -1e-3:
+        pred_vis = np.clip(pred_img / velocity_scale, 0.0, 1.0)
+    else:
+        pred_vis = np.clip(pred_img, 0.0, 1.0)
+    target_raw = target[0].detach().cpu().numpy()
+    if float(np.max(target_raw)) <= 1.0 + 1e-3:
+        target_raw = target_raw * velocity_scale
+    target_img = np.clip(target_raw / velocity_scale, 0.0, 1.0)
+    onset_roll = onset[0].detach().cpu().numpy() if onset is not None else np.zeros_like(target_raw)
+
+    frame_pick_img, onset_pick_img = _post_process_rolls(
+        pred_vis=pred_vis,
+        target_raw=target_raw,
+        onset_roll=onset_roll,
+    )
+
+    fig, axes = plt.subplots(2, 2, figsize=(10, 8))
+    specs = [
+        ("Ground Truth", target_img),
+        ("Prediction", pred_vis),
+        ("Post-Proc Frame-Pick", frame_pick_img),
+        ("Post-Proc Onset-Pick", onset_pick_img),
+    ]
+    for ax, (title, data) in zip(np.ravel(axes), specs):
+        im = ax.imshow(
+            data.T,
+            aspect="auto",
+            origin="lower",
+            interpolation="nearest",
+            vmin=0.0,
+            vmax=1.0,
+        )
+        ax.set_title(title)
+        ax.set_xlabel("Frame")
+        ax.set_ylabel("Key")
+        fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+    fig.suptitle(f"Velocity roll @ iter {iteration}")
+    fig.tight_layout()
+
+    wandb.log(
+        {
+            "velocity_roll_comparison": wandb.Image(fig),
+        },
+        step=iteration,
+    )
+    plt.close(fig)
