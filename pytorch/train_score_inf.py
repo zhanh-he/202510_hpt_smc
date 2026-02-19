@@ -247,21 +247,21 @@ def train(cfg):
     score_cfg = getattr(cfg, "score_informed", None)
     if score_cfg is None:
         method = "direct_output"
-        params = {}
+        score_params = {}
     else:
         if OmegaConf.is_config(score_cfg):
             score_cfg = OmegaConf.to_container(score_cfg, resolve=True)
         if isinstance(score_cfg, dict):
             method = score_cfg.get("method", "direct_output") or "direct_output"
-            params = score_cfg.get("params", {}) or {}
+            score_params = score_cfg.get("params", {}) or {}
         else:
             method = getattr(score_cfg, "method", "direct_output") or "direct_output"
-            params = getattr(score_cfg, "params", {}) or {}
+            score_params = getattr(score_cfg, "params", {}) or {}
 
-    params, cond_keys = _resolve_score_inf_conditioning(cfg, method, params)
+    score_params, cond_keys = _resolve_score_inf_conditioning(cfg, method, score_params)
     target_rolls = _required_target_rolls(cfg.loss.loss_type)
     train_mode, switch_iteration = _resolve_train_schedule(cfg, score_cfg)
-    post = build_score_inf(method, params).to(device)
+    post = build_score_inf(method, score_params).to(device)
     model = ScoreInfWrapper(adapter, post, freeze_base=False).to(device)
 
     # Paths for results
@@ -289,23 +289,14 @@ def train(cfg):
     train_loader, eval_loaders = build_dataloaders(cfg)
 
     # Optimizer
-    optim_cfg = getattr(cfg, "optim", None)
-    if optim_cfg is not None and OmegaConf.is_config(optim_cfg):
-        optim_cfg = OmegaConf.to_container(optim_cfg, resolve=True)
-    if isinstance(optim_cfg, dict):
-        opt_name = str(optim_cfg.get("name", "adamw")).lower()
-        lr = float(optim_cfg.get("lr", cfg.exp.learning_rate))
-        wd = float(optim_cfg.get("weight_decay", 0.0))
-    else:
-        opt_name = str(getattr(cfg.exp, "optim", "adam")).lower()
-        lr = float(getattr(cfg.exp, "learning_rate", 1e-4))
-        wd = float(getattr(cfg.exp, "weight_decay", 0.0))
-
-    params = list(model.parameters())
+    optim_params = list(model.parameters())
+    opt_name = str(cfg.exp.optim).lower()
     if opt_name == "adamw":
-        optimizer = AdamW(params, lr=lr, weight_decay=wd)
+        optimizer = AdamW(optim_params, lr=cfg.exp.learnrate, weight_decay=cfg.exp.weight_decay)
+    elif opt_name == "adam":
+        optimizer = Adam(optim_params, lr=cfg.exp.learnrate, weight_decay=cfg.exp.weight_decay)
     else:
-        optimizer = Adam(params, lr=lr, weight_decay=wd)
+        raise ValueError(f"Unsupported optimizer: {cfg.exp.optim}")
 
     init_wandb(cfg)
 

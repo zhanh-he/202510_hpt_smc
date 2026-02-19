@@ -126,7 +126,7 @@ def _post_process_rolls(pred_vis, target_raw, onset_roll):
 
 def log_velocity_rolls(cfg, iteration, batch_output_dict, batch_data_dict):
     """Log prediction vs target velocity rolls to WandB at configured intervals."""
-    interval = getattr(cfg.wandb, "log_velocity_interval", None) if hasattr(cfg, "wandb") else None
+    interval = cfg.exp.eval_iteration
     if not interval or interval <= 0:
         return
     if iteration % interval != 0:

@@ -2,7 +2,6 @@ wandb:
   project: "202602_smc"
   name: "${feature.audio_feature}-${model.type}-${score_informed.method}-${loss.loss_type}-k${loss.kim_loss_alpha}-l1${loss.w_l1}-b${loss.w_bce}-d${loss.w_delta}-uh${loss.use_huber}-wh${loss.w_huber}-hd${loss.huber_delta}-ext${model.input2}${model.input3}-sr${feature.sample_rate}" # -iter${exp.total_iteration}
   comment: "mel128"
-  log_velocity_interval: ${exp.eval_iteration}  # Set 0/null to disable WandB velocity roll images
 
 
 exp:
@@ -10,12 +9,13 @@ exp:
   # workspace: "/media/datadisk/home/22828187/zhanh/202510_hpt_data/workspaces" #uwa
   # workspace: "/Users/hanyu/Documents/ipynb/202510_hpt_data/workspaces" #mac
   # workspace: "/media/mengh/SharedData/zhanh/202510_hpt_data/workspaces" #mengh
-  total_iteration: 120_000 # 200_000 # 300_000 # 360_000
+  total_iteration: 120_000  # 200_000 # 300_000 # 360_000
   save_iteration: 10_000    # 6_000 # 6_000
   eval_iteration: 10_000    # 6_000 # 6_000
 
-  learning_rate: 1e-4 # 3e-4 # 1e-4
-  optim: "adam" # "adam", "ranger", Ranger: default betas=(0.9, 0.999), eps=1e-08, weight_decay=0.
+  optim: "adam"             # "adam" | "adamw" | "ranger"
+  learnrate: 1e-4           # 3e-4 # 1e-4
+  weight_decay: 0.0
   decay: True # False
   reduce_iteration: 10_000 # 6_000
   random_seed: 86
@@ -29,6 +29,11 @@ exp:
   run_infer: 'single' # 'multi'
   ckpt_iteration: ""  # 180_000
   ckpt_file: ""
+
+optim:
+  name: "adam"          # "adam" | "adamw"
+  lr: ${exp.learning_rate}
+  weight_decay: 0.0
 
 
 feature:
