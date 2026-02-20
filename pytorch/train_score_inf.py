@@ -337,7 +337,7 @@ def train(cfg):
         loss = loss_fn(cfg, out, batch_torch, cond_dict=cond)
 
         # Avoid CUDA tensor repr path in print(), which can mask the real kernel error.
-        print(iteration, float(loss.detach().item()))
+        print(f"iter {iteration} loss {float(loss.detach().item()):.6f}")
         train_loss += loss.item()
         train_loss_steps += 1
         log_velocity_rolls(cfg, iteration, {"velocity_output": out["vel_corr"]}, batch_torch)

@@ -246,7 +246,7 @@ def train(cfg):
 
             if is_main:
                 # Avoid CUDA tensor repr path in print(), which can mask the real kernel error.
-                print(iteration, float(loss.detach().item()))
+                print(f"iter {iteration} loss {float(loss.detach().item()):.6f}")
                 log_velocity_rolls(cfg, iteration, {"velocity_output": out["vel_corr"]}, batch_torch)
 
             loss.backward()
