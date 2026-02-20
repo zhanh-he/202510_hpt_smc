@@ -6,4 +6,3 @@ score_informed:
     n_blocks: 8
     dilations_t: [1,2,4,8,1,2,4,8]
     alpha: 0.2
-    mask_outside_onset: false

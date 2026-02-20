@@ -58,7 +58,6 @@ class SCRR(nn.Module):
         dilations_t: Optional[List[int]] = None,
         alpha: float = 0.2,
         norm_groups: int = 8,
-        mask_outside_onset: bool = False,
     ):
         super().__init__()
         if not in_feats:
@@ -66,7 +65,6 @@ class SCRR(nn.Module):
         self.in_feats = in_feats
         self.cond_keys = cond_keys
         self.alpha = alpha
-        self.mask_outside_onset = mask_outside_onset
 
         self.in_channels = len(in_feats)
         self.cond_channels = len(cond_keys)
@@ -114,8 +112,5 @@ class SCRR(nn.Module):
 
         vel0 = self._get_feat(acoustic, "vel")
         vel_corr = torch.clamp(vel0 + self.alpha * torch.tanh(delta), 0.0, 1.0)
-
-        if self.mask_outside_onset and cond.onset is not None:
-            vel_corr = vel_corr * cond.onset
 
         return {"vel_corr": vel_corr, "delta": delta, "debug": {"vel0": vel0}}

@@ -4,4 +4,3 @@ score_informed:
     hid: 48
     n_blocks: 4
     alpha: 0.2
-    mask_outside_onset: false

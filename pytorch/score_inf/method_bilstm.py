@@ -23,7 +23,6 @@ class ScoreInformedBiLSTM(nn.Module):
         dropout: float = 0.1,
         mode: str = "direct",                            # "direct" or "residual"
         alpha: float = 0.2,
-        mask_outside_onset: bool = False,
     ):
         super().__init__()
         assert mode in ("direct", "residual")
@@ -35,7 +34,6 @@ class ScoreInformedBiLSTM(nn.Module):
         self.dropout = dropout
         self.mode = mode
         self.alpha = alpha
-        self.mask_outside_onset = mask_outside_onset
 
         n_ch = len(in_feats) + len(cond_keys)
         input_size = 88 * n_ch
@@ -93,8 +91,5 @@ class ScoreInformedBiLSTM(nn.Module):
             delta = out
             vel_corr = torch.clamp(vel0 + self.alpha * torch.tanh(delta), 0.0, 1.0)
             logits = None
-
-        if self.mask_outside_onset and cond.onset is not None:
-            vel_corr = vel_corr * cond.onset
 
         return {"vel_corr": vel_corr, "delta": delta, "logits": logits}

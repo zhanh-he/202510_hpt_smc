@@ -2,6 +2,7 @@ from __future__ import annotations
 from typing import Optional, List
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from .registry import register_score_inf
 from .io_types import AcousticIO, CondIO
@@ -67,14 +68,12 @@ class NoteEventEditor(nn.Module):
         arch: str = "conformer",        # transformer / conformer
         alpha: float = 0.2,
         max_frames: int = 4096,
-        mask_outside_onset: bool = False,
         use_cond_feats: List[str] = ["frame", "exframe"],  # optional extras for token features
     ):
         super().__init__()
         assert arch in ("transformer", "conformer")
         self.arch = arch
         self.alpha = alpha
-        self.mask_outside_onset = mask_outside_onset
         self.use_cond_feats = use_cond_feats
 
         self.pitch_emb = nn.Embedding(88, d_model)
@@ -104,7 +103,30 @@ class NoteEventEditor(nn.Module):
         B, T, P = vel0.shape
         device = vel0.device
 
-        onset_mask = (cond.onset > 0.5)
+        if cond.onset is None:
+            raise ValueError("note_editor requires onset conditioning, but cond.onset is None.")
+
+        onset = cond.onset
+        if onset.dim() != 3:
+            raise ValueError(f"Expected cond.onset to be 3D [B,T,P], but got shape={tuple(onset.shape)}")
+        if onset.size(0) != B:
+            raise ValueError(
+                f"Batch mismatch between vel0 and cond.onset: vel0.B={B}, cond.onset.B={onset.size(0)}"
+            )
+
+        # Keep onset tensor aligned with acoustic pitch/time sizes to avoid OOB indexing.
+        if onset.size(1) != T:
+            if onset.size(1) > T:
+                onset = onset[:, :T]
+            else:
+                onset = F.pad(onset, (0, 0, 0, T - onset.size(1)))
+        if onset.size(2) != P:
+            if onset.size(2) > P:
+                onset = onset[:, :, :P]
+            else:
+                onset = F.pad(onset, (0, P - onset.size(2), 0, 0))
+
+        onset_mask = (onset > 0.5)
 
         token_embs = []
         token_coords = []
@@ -124,7 +146,8 @@ class NoteEventEditor(nn.Module):
                 continue
 
             t_idx = coords[:, 0]
-            p_idx = coords[:, 1]
+            pitch_max = min(P - 1, self.pitch_emb.num_embeddings - 1)
+            p_idx = coords[:, 1].clamp_max(pitch_max)
 
             v0 = vel0[b, t_idx, p_idx].float()
 
@@ -152,7 +175,7 @@ class NoteEventEditor(nn.Module):
 
         Nmax = max(lengths) if lengths else 0
         if Nmax == 0:
-            vel_corr = vel0 * cond.onset if self.mask_outside_onset else vel0
+            vel_corr = vel0
             return {"vel_corr": vel_corr, "delta": None, "debug": {"note_count": torch.tensor(lengths, device=device)}}
 
         D = self.pitch_emb.embedding_dim
@@ -164,12 +187,28 @@ class NoteEventEditor(nn.Module):
                 x[b, :n] = token_embs[b]
                 key_padding_mask[b, :n] = False
 
-        if self.arch == "transformer":
-            h = self.encoder(x, src_key_padding_mask=key_padding_mask)
+        # Some CUDA/PyTorch combinations are unstable when a sample is fully padded.
+        # Run attention only on rows with at least one token.
+        valid_rows = [b for b, n in enumerate(lengths) if n > 0]
+        if len(valid_rows) == B:
+            if self.arch == "transformer":
+                h = self.encoder(x, src_key_padding_mask=key_padding_mask)
+            else:
+                h = x
+                for layer in self.encoder:
+                    h = layer(h, key_padding_mask=key_padding_mask)
         else:
-            h = x
-            for layer in self.encoder:
-                h = layer(h, key_padding_mask=key_padding_mask)
+            h = torch.zeros_like(x)
+            v_idx = torch.tensor(valid_rows, device=device, dtype=torch.long)
+            xv = x[v_idx]
+            kv = key_padding_mask[v_idx]
+            if self.arch == "transformer":
+                hv = self.encoder(xv, src_key_padding_mask=kv)
+            else:
+                hv = xv
+                for layer in self.encoder:
+                    hv = layer(hv, key_padding_mask=kv)
+            h[v_idx] = hv
 
         delta_tok = self.head(h).squeeze(-1)  # (B,Nmax)
 
@@ -183,8 +222,5 @@ class NoteEventEditor(nn.Module):
             t_idx = coords[:, 0]
             p_idx = coords[:, 1]
             vel_corr[b, t_idx, p_idx] = torch.clamp(vel0[b, t_idx, p_idx] + dv, 0.0, 1.0)
-
-        if self.mask_outside_onset:
-            vel_corr = vel_corr * cond.onset
 
         return {"vel_corr": vel_corr, "delta": delta_tok, "debug": {"note_count": torch.tensor(lengths, device=device)}}

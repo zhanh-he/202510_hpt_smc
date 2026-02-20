@@ -336,7 +336,8 @@ def train(cfg):
         out = model(audio, cond)
         loss = loss_fn(cfg, out, batch_torch, cond_dict=cond)
 
-        print(iteration, loss)
+        # Avoid CUDA tensor repr path in print(), which can mask the real kernel error.
+        print(iteration, float(loss.detach().item()))
         train_loss += loss.item()
         train_loss_steps += 1
         log_velocity_rolls(cfg, iteration, {"velocity_output": out["vel_corr"]}, batch_torch)

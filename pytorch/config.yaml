@@ -90,9 +90,7 @@ model:
 
 score_informed:
   method: "direct_output"     # direct_output | scrr | dual_gated | note_editor | bilstm
-  # params: {}
-  params:
-    mask_outside_onset: false
+  params: {}
   train_mode: "joint"         # joint | adapter_then_score | adapter_then_joint
   switch_iteration: 100_000    # phase switch point for staged modes
 

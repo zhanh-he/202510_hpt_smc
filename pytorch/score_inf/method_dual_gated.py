@@ -49,12 +49,10 @@ class DualGated(nn.Module):
         alpha: float = 0.2,
         hid: int = 48,
         n_blocks: int = 4,
-        mask_outside_onset: bool = False,
     ):
         super().__init__()
         self.cond_keys = cond_keys
         self.alpha = alpha
-        self.mask_outside_onset = mask_outside_onset
 
         # acoustic expert input: 1 (vel_logits) + Cc (cond)
         self.ac_expert = _TinyConv(in_ch=1 + len(cond_keys), hid=hid, n_blocks=n_blocks)
@@ -79,8 +77,5 @@ class DualGated(nn.Module):
         w = torch.sigmoid(self.gate(x_ac))
 
         vel_corr = torch.clamp(w * v_ac + (1.0 - w) * v_sc, 0.0, 1.0)
-
-        if self.mask_outside_onset and cond.onset is not None:
-            vel_corr = vel_corr * cond.onset
 
         return {"vel_corr": vel_corr, "delta": delta_ac, "debug": {"w": w, "v_ac": v_ac, "v_sc": v_sc}}

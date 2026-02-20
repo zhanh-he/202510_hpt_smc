@@ -1,14 +1,14 @@
 #!/bin/bash
-#SBATCH --job-name=scoreinf_ablate
-#SBATCH --output=scoreinf_progress_%A_%a.log
-#SBATCH --error=scoreinf_error_%A_%a.log
+#SBATCH --job-name=scoreinf_note_editor
+#SBATCH --output=scoreinf_note_editor_progress_%A_%a.log
+#SBATCH --error=scoreinf_note_editor_error_%A_%a.log
 #SBATCH --partition=gpu
 #SBATCH --ntasks=1
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=32G
 #SBATCH --time=72:00:00
-#SBATCH --array=0-80
+#SBATCH --array=0-26
 #SBATCH --mail-type=END,FAIL
 #SBATCH --mail-user=zhanh.he@research.uwa.edu.au
 
@@ -42,40 +42,25 @@ DATA_VIEW=$WORKSPACE_DIR/hdf5s
 ln -s $DATA_SRC $DATA_VIEW
 
 #############################################
-# Adapter/method/loss/input ablation (scrr + note_editor moved to separate scripts):
-# direct_output: input2=null, input3=null
-# dual_gated/bilstm: (onset,null), (frame,null), (onset,frame), (onset,exframe)
-# Total = 3 adapters x (1*3*1 + 2*3*4) = 81 array jobs.
+# note_editor-only ablation:
+# note_editor requires input2=onset; input3 in {null, frame, exframe}
+# Total = 3 adapters x 3 losses x 3 input settings = 27 array jobs.
 ADAPTERS=("hpt" "hppnet" "dynest")
-METHODS=("direct_output" "dual_gated" "bilstm")
 LOSSES=("velocity_bce" "kim_bce_l1" "score_inf_custom")
-COND_INPUT2=("onset" "frame" "onset" "onset")
-COND_INPUT3=("null"  "null"  "frame" "exframe")
+METHOD="note_editor"
+INPUT2_FIXED="onset"
+COND_INPUT3=("null" "frame" "exframe")
 
 EXP_ADAPTER=()
-EXP_METHOD=()
 EXP_LOSS=()
-EXP_INPUT2=()
 EXP_INPUT3=()
 
 for ADAPTER in "${ADAPTERS[@]}"; do
-  for METHOD in "${METHODS[@]}"; do
-    for LOSS_TYPE in "${LOSSES[@]}"; do
-      if [ "$METHOD" = "direct_output" ]; then
-        EXP_ADAPTER+=("$ADAPTER")
-        EXP_METHOD+=("$METHOD")
-        EXP_LOSS+=("$LOSS_TYPE")
-        EXP_INPUT2+=("null")
-        EXP_INPUT3+=("null")
-      else
-        for i in "${!COND_INPUT2[@]}"; do
-          EXP_ADAPTER+=("$ADAPTER")
-          EXP_METHOD+=("$METHOD")
-          EXP_LOSS+=("$LOSS_TYPE")
-          EXP_INPUT2+=("${COND_INPUT2[$i]}")
-          EXP_INPUT3+=("${COND_INPUT3[$i]}")
-        done
-      fi
+  for LOSS_TYPE in "${LOSSES[@]}"; do
+    for INPUT3 in "${COND_INPUT3[@]}"; do
+      EXP_ADAPTER+=("$ADAPTER")
+      EXP_LOSS+=("$LOSS_TYPE")
+      EXP_INPUT3+=("$INPUT3")
     done
   done
 done
@@ -87,20 +72,18 @@ if [ "$SLURM_ARRAY_TASK_ID" -ge "$TOTAL_JOBS" ]; then
 fi
 
 ADAPTER=${EXP_ADAPTER[$SLURM_ARRAY_TASK_ID]}
-METHOD=${EXP_METHOD[$SLURM_ARRAY_TASK_ID]}
 LOSS_TYPE=${EXP_LOSS[$SLURM_ARRAY_TASK_ID]}
-INPUT2=${EXP_INPUT2[$SLURM_ARRAY_TASK_ID]}
 INPUT3=${EXP_INPUT3[$SLURM_ARRAY_TASK_ID]}
 
 echo "Adapter: $ADAPTER"
 echo "Method : $METHOD"
 echo "Loss   : $LOSS_TYPE"
-echo "Input2 : $INPUT2"
+echo "Input2 : $INPUT2_FIXED"
 echo "Input3 : $INPUT3"
 
 python pytorch/train_score_inf.py \
   exp.workspace="$WORKSPACE_DIR" \
-  model.input2="$INPUT2" \
+  model.input2="$INPUT2_FIXED" \
   model.input3="$INPUT3" \
   model.type="$ADAPTER" \
   score_informed.method="$METHOD" \
@@ -110,6 +93,6 @@ python pytorch/train_score_inf.py \
 mv "$WORKSPACE_DIR/checkpoints/" "${RESULTS}/"
 mv "$WORKSPACE_DIR/logs/" "${RESULTS}/"
 cd $HOME
-rm -r $SCRATCH # clean up the scratch space
-source deactivate # Deactivate the conda environment - source or conda deactivate
-echo scoreinf_ablate $SLURM_ARRAY_JOB_ID $SLURM_ARRAY_TASK_ID finished at `date`
+rm -r $SCRATCH
+source deactivate
+echo scoreinf_note_editor $SLURM_ARRAY_JOB_ID $SLURM_ARRAY_TASK_ID finished at `date`
