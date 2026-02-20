@@ -7,4 +7,4 @@ score_informed:
     n_heads: 4
     dropout: 0.1
     alpha: 0.2
-    mask_outside_onset: true
+    mask_outside_onset: false

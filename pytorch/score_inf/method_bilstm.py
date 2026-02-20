@@ -23,7 +23,7 @@ class ScoreInformedBiLSTM(nn.Module):
         dropout: float = 0.1,
         mode: str = "direct",                            # "direct" or "residual"
         alpha: float = 0.2,
-        mask_outside_onset: bool = True,
+        mask_outside_onset: bool = False,
     ):
         super().__init__()
         assert mode in ("direct", "residual")

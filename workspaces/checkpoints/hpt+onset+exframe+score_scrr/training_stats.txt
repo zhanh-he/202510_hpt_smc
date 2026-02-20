@@ -1,0 +1,14 @@
+file name           :logmel-hpt-scrr-score_inf_custom-k0.5-l11.0-b0.5-d0.01-uhTrue-wh1.0-hd0.1-extonsetexframe-sr22050
+dev_env             :local
+condition_check     :True
+condition_net       :N/A
+loss_type           :score_inf_custom
+condition_type      :onset+exframe
+batch_size          :12
+hop_seconds         :1.0
+segment_seconds     :10.0
+frames_per_second   :100
+feature type        :logmel
+score_inf_method    :scrr
+train_mode          :joint
+switch_iteration    :100000

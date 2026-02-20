@@ -67,7 +67,7 @@ class NoteEventEditor(nn.Module):
         arch: str = "conformer",        # transformer / conformer
         alpha: float = 0.2,
         max_frames: int = 4096,
-        mask_outside_onset: bool = True,
+        mask_outside_onset: bool = False,
         use_cond_feats: List[str] = ["frame", "exframe"],  # optional extras for token features
     ):
         super().__init__()

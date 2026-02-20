@@ -49,7 +49,7 @@ class DualGated(nn.Module):
         alpha: float = 0.2,
         hid: int = 48,
         n_blocks: int = 4,
-        mask_outside_onset: bool = True,
+        mask_outside_onset: bool = False,
     ):
         super().__init__()
         self.cond_keys = cond_keys

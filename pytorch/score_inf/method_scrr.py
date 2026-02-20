@@ -58,7 +58,7 @@ class SCRR(nn.Module):
         dilations_t: Optional[List[int]] = None,
         alpha: float = 0.2,
         norm_groups: int = 8,
-        mask_outside_onset: bool = True,
+        mask_outside_onset: bool = False,
     ):
         super().__init__()
         if not in_feats:
