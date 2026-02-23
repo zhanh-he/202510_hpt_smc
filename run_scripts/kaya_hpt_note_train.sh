@@ -8,7 +8,7 @@
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=32G
 #SBATCH --time=72:00:00
-#SBATCH --array=0-26
+#SBATCH --array=0-8
 #SBATCH --mail-type=END,FAIL
 #SBATCH --mail-user=zhanh.he@research.uwa.edu.au
 
@@ -44,9 +44,9 @@ ln -s $DATA_SRC $DATA_VIEW
 #############################################
 # note_editor-only ablation:
 # note_editor requires input2=onset; input3 in {null, frame, exframe}
-# Total = 3 adapters x 3 losses x 3 input settings = 27 array jobs.
+# Total = 3 adapters x 1 losses x 3 input settings = 9 array jobs.
 ADAPTERS=("hpt" "hppnet" "dynest")
-LOSSES=("velocity_bce" "kim_bce_l1" "score_inf_custom")
+LOSSES=("kim_bce_l1")
 METHOD="note_editor"
 INPUT2_FIXED="onset"
 COND_INPUT3=("null" "frame" "exframe")

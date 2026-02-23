@@ -132,14 +132,14 @@ def get_loss_func(cfg, loss_type=None):
     - explicit loss_type if provided
     - cfg.loss.loss_type
     """
-    loss_type = cfg.loss.loss_type
+    selected_loss_type = loss_type if loss_type is not None else cfg.loss.loss_type
     loss_map = {
         "velocity_bce": velocity_bce,
         "velocity_mse": velocity_mse,
         "kim_bce_l1":   kim_velocity_bce_l1,
         "score_inf_custom": score_inf_custom_loss,
     }
-    if loss_type in loss_map:
-        return loss_map[loss_type]
+    if selected_loss_type in loss_map:
+        return loss_map[selected_loss_type]
 
-    raise ValueError(f"Incorrect loss_type: {loss_type!r}")
+    raise ValueError(f"Incorrect loss_type: {selected_loss_type!r}")

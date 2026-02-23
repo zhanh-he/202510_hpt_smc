@@ -9,11 +9,11 @@
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=32G
 #SBATCH --time=72:00:00
-#SBATCH --array=0-35
+#SBATCH --array=0-11
 #SBATCH --mail-type=END,FAIL
 #SBATCH --mail-user=zhanh.he@research.uwa.edu.au
 
-module load Anaconda3/2024.06 cuda/11.8 gcc/11.5.0
+module load Anaconda3/2024.06 gcc/11.5.0 cuda/12.6.3
 module list
 source activate bark_env
 
@@ -53,9 +53,9 @@ ln -s "$DATA_SRC" "$DATA_VIEW"
 
 #############################################
 # SCRR-only dual-GPU jobs:
-# total = 3 adapters x 3 losses x 4 input settings = 36.
+# total = 3 adapters x 1 losses x 4 input settings = 12.
 ADAPTERS=("hpt" "hppnet" "dynest")
-LOSSES=("velocity_bce" "kim_bce_l1" "score_inf_custom")
+LOSSES=("kim_bce_l1")
 COND_INPUT2=("onset" "frame" "onset" "onset")
 COND_INPUT3=("null"  "null"  "frame" "exframe")
 METHOD="scrr"
@@ -96,7 +96,7 @@ echo "Input3 : $INPUT3"
 LAUNCHER="torchrun --standalone --nnodes=1 --nproc_per_node=${GPUS_PER_NODE}"
 CMD="$LAUNCHER pytorch/train_score_inf_dual.py \
   exp.workspace=\"$WORKSPACE_DIR\" \
-  exp.use_fsdp=true \
+  +exp.use_fsdp=true \
   model.type=\"$ADAPTER\" \
   score_informed.method=\"$METHOD\" \
   model.input2=\"$INPUT2\" \
@@ -112,5 +112,5 @@ eval "$CMD"
 
 cd "$HOME" || exit 1
 rm -r "$SCRATCH"
-source deactivate
+conda deactivate 2>/dev/null || deactivate 2>/dev/null || true
 echo scoreinf_scrr_dual $SLURM_ARRAY_JOB_ID $SLURM_ARRAY_TASK_ID finished at `date`

@@ -8,7 +8,7 @@
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=32G
 #SBATCH --time=72:00:00
-#SBATCH --array=0-80
+#SBATCH --array=0-26
 #SBATCH --mail-type=END,FAIL
 #SBATCH --mail-user=zhanh.he@research.uwa.edu.au
 
@@ -45,10 +45,10 @@ ln -s $DATA_SRC $DATA_VIEW
 # Adapter/method/loss/input ablation (scrr + note_editor moved to separate scripts):
 # direct_output: input2=null, input3=null
 # dual_gated/bilstm: (onset,null), (frame,null), (onset,frame), (onset,exframe)
-# Total = 3 adapters x (1*3*1 + 2*3*4) = 81 array jobs.
+# Total = 3 adapters x (1*1*1 + 2*1*4) = 27 array jobs.
 ADAPTERS=("hpt" "hppnet" "dynest")
 METHODS=("direct_output" "dual_gated" "bilstm")
-LOSSES=("velocity_bce" "kim_bce_l1" "score_inf_custom")
+LOSSES=("kim_bce_l1")
 COND_INPUT2=("onset" "frame" "onset" "onset")
 COND_INPUT3=("null"  "null"  "frame" "exframe")
 
