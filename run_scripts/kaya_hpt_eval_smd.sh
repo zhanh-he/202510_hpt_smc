@@ -22,20 +22,42 @@
 #   3: step iteration        (default: 10000)
 
 
-set -euo pipefail
-
 module load Anaconda3/2024.06 gcc/11.5.0 cuda/12.4.1
 module list
 source activate bark_env
 
-PROJECT_ROOT=${PROJECT_ROOT:-$HOME/202510_hpt_smc}
-WORKSPACE=${WORKSPACE:-/media/datadisk/home/22828187/zhanh/202510_hpt_data/workspaces}
+echo "Running on host: $(hostname)"
+echo "Using GPU: $CUDA_VISIBLE_DEVICES"
+echo "SLURM ID: $SLURM_ARRAY_ID $SLURM_ARRAY_TASK_ID"
+
+FOLDER_NAME=${SLURM_ARRAY_JOB_ID}_${SLURM_ARRAY_TASK_ID}
+PROJECT_NAME=202510_hpt_smc
+EXECUTABLE=$HOME/${PROJECT_NAME}
+SCRATCH=$MYSCRATCH/${PROJECT_NAME}/$FOLDER_NAME
+RESULTS=$MYGROUP/${PROJECT_NAME}_results/$FOLDER_NAME
+
+mkdir -p $SCRATCH $RESULTS
+echo SCRATCH is $SCRATCH
+echo RESULTS dir is $RESULTS
+
+echo "Copy path $EXECUTABLE to $SCRATCH"
+cp -r $EXECUTABLE $SCRATCH
+cd $SCRATCH/$PROJECT_NAME
+
+WORKSPACE_DIR=$SCRATCH/$PROJECT_NAME/workspaces
+mkdir -p $WORKSPACE_DIR
+
+DATA_SRC=$MYSCRATCH/202510_hpt_data/workspaces/hdf5s
+DATA_VIEW=$WORKSPACE_DIR/hdf5s
+ln -s $DATA_SRC $DATA_VIEW
+
+CKPT_SRC=$MYSCRATCH/202510_hpt_data/workspaces/checkpoints
+CKPT_VIEW=$WORKSPACE_DIR/checkpoints
+ln -s $CKPT_SRC $CKPT_VIEW
 
 TEST_SET=${1:-smd}
 END_ITER=${2:-120000}
 STEP_ITER=${3:-10000}
-
-cd "$PROJECT_ROOT"
 
 # ----------------------------
 # Eval matrix
@@ -98,16 +120,16 @@ run_one() {
   local INPUT3=${EXP_INPUT3[$IDX]}
 
   echo "Host            : $(hostname)"
-  echo "CUDA            : ${CUDA_VISIBLE_DEVICES:-N/A}"
-  echo "Project root    : $PROJECT_ROOT"
-  echo "Workspace       : $WORKSPACE"
+  echo "CUDA            : $CUDA_VISIBLE_DEVICES"
+  echo "Project root    : $SCRATCH/$PROJECT_NAME"
+  echo "Workspace       : $WORKSPACE_DIR"
   echo "Eval dataset    : $TEST_SET"
   echo "Iteration sweep : 0 -> $END_ITER (step=$STEP_ITER)"
   echo "Job idx         : $IDX / $((TOTAL_JOBS-1))"
   echo "Model config    : type=$MODEL_TYPE input2=$INPUT2 input3=$INPUT3 method=$SCORE_METHOD"
 
   python pytorch/calculate_scores.py \
-    exp.workspace="$WORKSPACE" \
+    exp.workspace="$WORKSPACE_DIR" \
     dataset.test_set=$TEST_SET \
     model.type=$MODEL_TYPE \
     model.input2=$INPUT2 \
@@ -119,18 +141,18 @@ run_one() {
     +exp.eval_step_iteration=$STEP_ITER
 }
 
-if [ -n "${SLURM_ARRAY_TASK_ID:-}" ]; then
-  IDX=$SLURM_ARRAY_TASK_ID
-  if [ "$IDX" -lt 0 ] || [ "$IDX" -ge "$TOTAL_JOBS" ]; then
-    echo "SLURM_ARRAY_TASK_ID=$IDX out of range (0..$((TOTAL_JOBS-1)))"
-    exit 1
-  fi
-  run_one "$IDX"
-else
-  # Local run: execute all configs sequentially
-  for IDX in $(seq 0 $((TOTAL_JOBS-1))); do
-    run_one "$IDX"
-  done
+if [ "$SLURM_ARRAY_TASK_ID" -ge "$TOTAL_JOBS" ]; then
+  echo "SLURM_ARRAY_TASK_ID=$SLURM_ARRAY_TASK_ID out of range (0..$((TOTAL_JOBS-1)))"
+  exit 1
 fi
 
+run_one "$SLURM_ARRAY_TASK_ID"
+
+#############################################
+[ -d "$WORKSPACE_DIR/kim_eval" ] && mv "$WORKSPACE_DIR/kim_eval/" "${RESULTS}/"
+[ -d "$WORKSPACE_DIR/kim_eval_summary" ] && mv "$WORKSPACE_DIR/kim_eval_summary/" "${RESULTS}/"
+[ -d "$WORKSPACE_DIR/logs" ] && mv "$WORKSPACE_DIR/logs/" "${RESULTS}/"
+cd $HOME
+rm -r $SCRATCH
 source deactivate
+echo scoreinf_eval $SLURM_ARRAY_JOB_ID $SLURM_ARRAY_TASK_ID finished at `date`
