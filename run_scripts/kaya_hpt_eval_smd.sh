@@ -1,13 +1,4 @@
 #!/bin/bash
-# Usage:
-#   sbatch run_scripts/kaya_hpt_eval_smd.sh
-#   sbatch --array=0-35 run_scripts/kaya_hpt_eval_smd.sh
-#   bash run_scripts/kaya_hpt_eval_smd.sh  # local sequential run
-# Args:
-#   1: dataset.test_set      (default: smd)
-#   2: end iteration         (default: 120000)
-#   3: step iteration        (default: 10000)
-
 #SBATCH --job-name=scoreinf_eval
 #SBATCH --output=scoreinf_eval_%A_%a.log
 #SBATCH --error=scoreinf_eval_%A_%a.err
@@ -18,10 +9,22 @@
 #SBATCH --mem=24G
 #SBATCH --time=72:00:00
 #SBATCH --array=0-35
+#SBATCH --mail-type=END,FAIL
+#SBATCH --mail-user=zhanh.he@research.uwa.edu.au
+
+# Usage:
+#   sbatch run_scripts/kaya_hpt_eval_smd.sh
+#   sbatch --array=0-35 run_scripts/kaya_hpt_eval_smd.sh
+#   bash run_scripts/kaya_hpt_eval_smd.sh  # local sequential run
+# Args:
+#   1: dataset.test_set      (default: smd)
+#   2: end iteration         (default: 120000)
+#   3: step iteration        (default: 10000)
+
 
 set -euo pipefail
 
-module load Anaconda3/2024.06 cuda/11.8 gcc/11.5.0
+module load Anaconda3/2024.06 gcc/11.5.0 cuda/12.4.1
 module list
 source activate bark_env
 
