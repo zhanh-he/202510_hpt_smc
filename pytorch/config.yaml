@@ -5,8 +5,8 @@ wandb:
 
 
 exp:
-  # workspace: "./workspaces" #kaya
-  workspace: "/media/datadisk/home/22828187/zhanh/202510_hpt_data/workspaces" #uwa
+  workspace: "./workspaces" #kaya
+  # workspace: "/media/datadisk/home/22828187/zhanh/202510_hpt_data/workspaces" #uwa
   # workspace: "/Users/hanyu/Documents/ipynb/202510_hpt_data/workspaces" #mac
   # workspace: "/media/mengh/SharedData/zhanh/202510_hpt_data/workspaces" #mengh
   total_iteration: 120_000  # 200_000 # 300_000 # 360_000
