@@ -1,12 +1,12 @@
 wandb:
   project: "202602_smc"
   name: "${feature.audio_feature}-${model.type}-${score_informed.method}-${loss.loss_type}-k${loss.kim_loss_alpha}-l1${loss.w_l1}-b${loss.w_bce}-d${loss.w_delta}-uh${loss.use_huber}-wh${loss.w_huber}-hd${loss.huber_delta}-ext${model.input2}${model.input3}-sr${feature.sample_rate}-${wandb.comment}" # -iter${exp.total_iteration}
-  comment: "mel128"
+  comment: "mel229"
 
 
 exp:
-  workspace: "./workspaces" #kaya
-  # workspace: "/media/datadisk/home/22828187/zhanh/202510_hpt_data/workspaces" #uwa
+  # workspace: "./workspaces" #kaya
+  workspace: "/media/datadisk/home/22828187/zhanh/202510_hpt_data/workspaces" #uwa
   # workspace: "/Users/hanyu/Documents/ipynb/202510_hpt_data/workspaces" #mac
   # workspace: "/media/mengh/SharedData/zhanh/202510_hpt_data/workspaces" #mengh
   total_iteration: 120_000  # 200_000 # 300_000 # 360_000
@@ -107,7 +107,7 @@ post:
 # Loss configuration
 # ---------------------------
 loss:
-  loss_type: "velocity_bce"
+  loss_type: "kim_bce_l1" # "velocity_bce"
   kim_loss_alpha: 0.5  # Weight of BCE term in Kim et al. 2024 BCE+L1 loss
   w_l1: 1.0
   w_bce: 0.5

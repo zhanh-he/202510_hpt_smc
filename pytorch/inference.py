@@ -12,8 +12,10 @@ import torch
 from hydra import compose, initialize
 from tqdm import tqdm
 
-from pytorch_utils import forward, forward_velo
+from pytorch_utils import forward, forward_velo, move_data_to_device
+from model import build_adapter
 from model.model_registry import build_model
+from score_inf import build_score_inf, ScoreInfWrapper
 from feature_extractor import PsychoFeatureExtractor
 from utilities import (
     OnsetsFramesPostProcessor,
@@ -65,6 +67,37 @@ AUDIO_SCORE_FIELDS = [
 _FILM_TYPES = {"filmunet_pretrained", "filmunet"}
 
 
+def _normalized_cond_name(name: Optional[str]) -> Optional[str]:
+    if name is None:
+        return None
+    s = str(name)
+    if s == "null":
+        return None
+    return s
+
+
+def _resolve_score_inf_build(cfg) -> Tuple[str, Dict, List[str]]:
+    method = str(cfg.score_informed.method)
+    score_params = dict(cfg.score_informed.params)
+    cond_selected = [
+        key
+        for key in [_normalized_cond_name(cfg.model.input2), _normalized_cond_name(cfg.model.input3)]
+        if key
+    ]
+
+    if method == "note_editor":
+        note_extra = _normalized_cond_name(cfg.model.input3)
+        use_cond_feats = [note_extra] if note_extra else []
+        score_params["use_cond_feats"] = use_cond_feats
+        return method, score_params, ["onset"] + use_cond_feats
+
+    if method in ("bilstm", "scrr", "dual_gated"):
+        score_params["cond_keys"] = cond_selected
+        return method, score_params, cond_selected
+
+    return method, score_params, []
+
+
 class TranscriptionBase:
     def __init__(self, checkpoint_path, cfg):
         self.cfg = cfg
@@ -75,11 +108,13 @@ class TranscriptionBase:
         self.segment_frames = int(round(cfg.feature.frames_per_second * cfg.feature.segment_seconds)) + 1
 
         self.is_film = cfg.model.type in _FILM_TYPES
+        self.is_score_wrapper = False
+        self.score_cond_keys: List[str] = []
+        self.input2_key = _normalized_cond_name(cfg.model.input2)
+        self.input3_key = _normalized_cond_name(cfg.model.input3)
         if self.is_film:
             from kim_ismir2024.model_FilmUnet import FiLMUNetPretrained
             self.model = FiLMUNetPretrained(cfg)
-        else:
-            self.model = build_model(cfg)
         if os.path.getsize(checkpoint_path) == 0:
             raise ValueError(f"Checkpoint file for inference is empty: {checkpoint_path}")
 
@@ -95,6 +130,18 @@ class TranscriptionBase:
             return state
 
         state_dict = _strip_prefix(state_dict, "module.")
+
+        if not self.is_film:
+            self.is_score_wrapper = any(k.startswith("base_adapter.") for k in state_dict.keys())
+            if self.is_score_wrapper:
+                model_cfg = {"type": cfg.model.type, "params": cfg.model.params}
+                adapter = build_adapter(model_cfg, model=None, cfg=cfg)
+                score_method, score_params, score_cond_keys = _resolve_score_inf_build(cfg)
+                post = build_score_inf(score_method, score_params)
+                self.model = ScoreInfWrapper(adapter, post, freeze_base=False)
+                self.score_cond_keys = score_cond_keys
+            else:
+                self.model = build_model(cfg)
 
         target_model = self.model
         if self.is_film:
@@ -136,6 +183,38 @@ class TranscriptionBase:
         ]
         return np.concatenate(y, axis=0)
 
+    def _forward_score_wrapper(
+        self,
+        audio_segments: np.ndarray,
+        input2_segments: Optional[np.ndarray],
+        input3_segments: Optional[np.ndarray],
+        batch_size: int = 1,
+    ) -> Dict[str, np.ndarray]:
+        output_dict = {"velocity_output": []}
+        source_rolls: Dict[str, np.ndarray] = {}
+        if self.input2_key and input2_segments is not None:
+            source_rolls[self.input2_key] = input2_segments
+        if self.input3_key and input3_segments is not None:
+            source_rolls[self.input3_key] = input3_segments
+
+        pointer = 0
+        while pointer < len(audio_segments):
+            batch_audio = move_data_to_device(audio_segments[pointer : pointer + batch_size], self.device)
+            cond_batch = {
+                key: move_data_to_device(source_rolls[key][pointer : pointer + batch_size], self.device)
+                for key in self.score_cond_keys
+            }
+            pointer += batch_size
+
+            with torch.no_grad():
+                self.model.eval()
+                batch_output_dict = self.model(batch_audio, cond_batch)
+
+            output_dict["velocity_output"].append(batch_output_dict["vel_corr"].data.cpu().numpy())
+
+        output_dict["velocity_output"] = np.concatenate(output_dict["velocity_output"], axis=0)
+        return output_dict
+
 
 class VeloTranscription(TranscriptionBase):
     def transcribe(self, audio, input2=None, input3=None, midi_path=None):
@@ -161,7 +240,15 @@ class VeloTranscription(TranscriptionBase):
         input2_segments = process_extra_input(input2, audio_segments_num)
         input3_segments = process_extra_input(input3, audio_segments_num)
 
-        output_dict = forward_velo(self.model, audio_segments, input2_segments, input3_segments, batch_size=1)
+        if self.is_score_wrapper:
+            output_dict = self._forward_score_wrapper(
+                audio_segments,
+                input2_segments,
+                input3_segments,
+                batch_size=1,
+            )
+        else:
+            output_dict = forward_velo(self.model, audio_segments, input2_segments, input3_segments, batch_size=1)
         output_dict["velocity_output"] = self.deframe(output_dict["velocity_output"])[0:audio_len]
         return {
             "output_dict": output_dict,

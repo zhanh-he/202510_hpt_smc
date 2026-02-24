@@ -1,13 +1,15 @@
 import csv
 import sys
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import h5py
 import numpy as np
 from hydra import compose, initialize
+from omegaconf import OmegaConf
 from sklearn.metrics import f1_score, precision_score, recall_score
 from tqdm import tqdm
+import wandb
 from inference import VeloTranscription
 from utilities import (
     TargetProcessor,
@@ -17,6 +19,27 @@ from utilities import (
     resolve_hdf5_dir,
     traverse_folder,
 )
+
+
+def _mean_metrics(stats_dict: Dict[str, List[float]]) -> Dict[str, float]:
+    return {
+        key: float(np.mean(values))
+        for key, values in stats_dict.items()
+        if values
+    }
+
+
+def _iteration_sweep(cfg) -> List[int]:
+    start = int(getattr(cfg.exp, "eval_start_iteration", 0))
+    end = int(getattr(cfg.exp, "eval_end_iteration", cfg.exp.total_iteration))
+    step = int(
+        getattr(
+            cfg.exp,
+            "eval_step_iteration",
+            getattr(cfg.exp, "save_iteration", cfg.exp.eval_iteration),
+        )
+    )
+    return list(range(start, end + 1, step))
 
 
 def note_level_l1_per_window(
@@ -250,18 +273,20 @@ class KimStyleEvaluator:
         self,
         cfg,
         checkpoint_path: Optional[str] = None,
-        roll_adapter: Optional[
-            Callable[[Dict[str, np.ndarray], Dict[str, np.ndarray], Dict[str, Any]], np.ndarray]
-        ] = None,
         results_subdir: str = "kim_eval",
     ):
         self.cfg = cfg
-        self.model_name = get_model_name(cfg)
-        self.roll_adapter = roll_adapter
+        default_model_name = get_model_name(cfg)
+        score_method = str(cfg.score_informed.method)
+        if score_method != "direct_output":
+            default_model_name = f"{default_model_name}+score_{score_method}"
+        self.model_name = default_model_name
 
         if checkpoint_path:
             self.checkpoint_path = Path(checkpoint_path)
             self.ckpt_iteration = self.checkpoint_path.stem.replace("_iterations", "")
+            if self.checkpoint_path.parent.name:
+                self.model_name = self.checkpoint_path.parent.name
         else:
             if not cfg.exp.ckpt_iteration:
                 raise ValueError("cfg.exp.ckpt_iteration must be set for evaluation.")
@@ -269,7 +294,7 @@ class KimStyleEvaluator:
             self.checkpoint_path = (
                 Path(cfg.exp.workspace)
                 / "checkpoints"
-                / self.model_name
+                / default_model_name
                 / f"{self.ckpt_iteration}_iterations.pth"
             )
 
@@ -277,6 +302,11 @@ class KimStyleEvaluator:
             raise FileNotFoundError(f"Checkpoint not found: {self.checkpoint_path}")
 
         self.transcriptor = VeloTranscription(str(self.checkpoint_path), cfg)
+        self.params_count = int(
+            sum(p.numel() for p in self.transcriptor.model.parameters())
+        )
+        self.params_count_k = float(self.params_count / 1e3)
+        self.params_count_m = float(self.params_count / 1e6)
 
         hdf5_dir = resolve_hdf5_dir(cfg.exp.workspace, cfg.dataset.test_set, cfg.feature.sample_rate)
         _, self.hdf5_paths = traverse_folder(hdf5_dir)
@@ -320,15 +350,6 @@ class KimStyleEvaluator:
         output_dict = transcribed["output_dict"]
 
         predicted_roll = output_dict["velocity_output"]
-        if self.roll_adapter:
-            context = {
-                "audio": audio,
-                "midi_events": midi_events,
-                "midi_events_time": midi_events_time,
-                "duration": segment_seconds,
-                "cfg": self.cfg,
-            }
-            predicted_roll = self.roll_adapter(output_dict, target_dict, context)
 
         align_len = min(predicted_roll.shape[0], target_dict["velocity_roll"].shape[0])
 
@@ -402,43 +423,125 @@ class KimStyleEvaluator:
         return aggregated
 
 
-def run_kim_evaluation(
-    cfg,
-    checkpoint_path: Optional[str] = None,
-    roll_adapter: Optional[
-        Callable[[Dict[str, np.ndarray], Dict[str, np.ndarray], Dict[str, Any]], np.ndarray]
-    ] = None,
-    results_subdir: str = "kim_eval",
-) -> Dict[str, List[float]]:
-    evaluator = KimStyleEvaluator(
-        cfg,
-        checkpoint_path=checkpoint_path,
-        roll_adapter=roll_adapter,
-        results_subdir=results_subdir,
+def _run_single_mode(cfg) -> None:
+    evaluator = KimStyleEvaluator(cfg)
+    print("=" * 80)
+    print("Evaluation Mode : Kim et al. (single checkpoint)")
+    print(f"Model Name      : {evaluator.model_name}")
+    print(f"Test Set        : {cfg.dataset.test_set}")
+    print(f"Checkpoint      : {evaluator.checkpoint_path}")
+    print(
+        f"Params          : {evaluator.params_count} "
+        f"({evaluator.params_count_k:.3f} K, {evaluator.params_count_m:.3f} M)"
     )
-    return evaluator.run()
+    print("=" * 80)
+
+    stats_dict = evaluator.run()
+    if not stats_dict:
+        print("No test files processed.")
+        return
+
+    mean_stats = _mean_metrics(stats_dict)
+    print("\n===== Kim-style Average Metrics =====")
+    for key, value in mean_stats.items():
+        print(f"{key}: {value:.4f}")
+
+
+def _run_multi_mode(cfg) -> None:
+    model_name = get_model_name(cfg)
+    score_method = str(cfg.score_informed.method)
+    if score_method != "direct_output":
+        model_name = f"{model_name}+score_{score_method}"
+    iterations = _iteration_sweep(cfg)
+    ckpt_root = Path(cfg.exp.workspace) / "checkpoints" / model_name
+
+    summary_dir = Path(cfg.exp.workspace) / "kim_eval_summary" / cfg.dataset.test_set / model_name
+    create_folder(str(summary_dir))
+    summary_csv = summary_dir / "iter_summary.csv"
+
+    print("=" * 80)
+    print("Evaluation Mode : Kim et al. (multi-checkpoint)")
+    print(f"Model Name      : {model_name}")
+    print(f"Test Set        : {cfg.dataset.test_set}")
+    print(f"Checkpoint Dir  : {ckpt_root}")
+    print(
+        f"Iterations      : {iterations[0]} -> {iterations[-1]} "
+        f"(step={iterations[1] - iterations[0] if len(iterations) > 1 else 0})"
+    )
+    print("=" * 80)
+
+    run_name = f"eval-{model_name}-{cfg.dataset.test_set}-multi-it{iterations[0]}_to_{iterations[-1]}"
+    wandb.init(
+        project=cfg.wandb.project,
+        name=run_name,
+        config=OmegaConf.to_container(cfg, resolve=True),
+        reinit=True,
+    )
+
+    summary_fields = [
+        "iteration",
+        "checkpoint_path",
+        "params_count",
+        "params_count_k",
+        "params_count_m",
+        "frame_max_error",
+        "frame_max_std",
+        "f1_score",
+        "precision",
+        "recall",
+        "frame_mask_f1",
+        "frame_mask_precision",
+        "frame_mask_recall",
+        "onset_masked_error",
+        "onset_masked_std",
+    ]
+
+    with open(summary_csv, "w", newline="") as csvfile:
+        writer = csv.DictWriter(csvfile, fieldnames=summary_fields)
+        writer.writeheader()
+
+        for iteration in iterations:
+            ckpt_path = ckpt_root / f"{iteration}_iterations.pth"
+            evaluator = KimStyleEvaluator(cfg, checkpoint_path=str(ckpt_path))
+            print(
+                f"[eval] iter={iteration} | params={evaluator.params_count_k:.3f} K / "
+                f"{evaluator.params_count_m:.3f} M"
+            )
+            stats_dict = evaluator.run()
+
+            mean_stats = _mean_metrics(stats_dict)
+            row = {
+                "iteration": iteration,
+                "checkpoint_path": str(ckpt_path),
+                "params_count": evaluator.params_count,
+                "params_count_k": round(evaluator.params_count_k, 6),
+                "params_count_m": round(evaluator.params_count_m, 6),
+            }
+            row.update({k: round(v, 6) for k, v in mean_stats.items()})
+            writer.writerow(row)
+
+            payload = {
+                "iteration": iteration,
+                "eval/params_count": evaluator.params_count,
+                "eval/params_count_k": evaluator.params_count_k,
+                "eval/params_count_m": evaluator.params_count_m,
+            }
+            payload.update({f"eval/{k}": v for k, v in mean_stats.items()})
+            wandb.log(payload)
+
+    wandb.finish()
+
+    print(f"\n[done] Wrote evaluation summary: {summary_csv}")
 
 
 def main() -> None:
     initialize(config_path="./", job_name="kim_eval", version_base=None)
     cfg = compose(config_name="config", overrides=sys.argv[1:])
-
-    print("=" * 80)
-    print("Evaluation Mode : Kim et al.")
-    print(f"Model Name      : {get_model_name(cfg)}")
-    print(f"Test Set        : {cfg.dataset.test_set}")
-    print("=" * 80)
-
-    stats_dict = run_kim_evaluation(cfg)
-
-    if not stats_dict:
-        print("No test files processed.")
-        return
-
-    print("\n===== Kim-style Average Metrics =====")
-    for key, values in stats_dict.items():
-        mean_value = float(np.mean(values))
-        print(f"{key}: {mean_value:.4f}")
+    mode = str(getattr(cfg.exp, "run_infer", "single")).lower()
+    if mode == "multi":
+        _run_multi_mode(cfg)
+    else:
+        _run_single_mode(cfg)
 
 
 if __name__ == "__main__":

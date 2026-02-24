@@ -26,6 +26,7 @@ from pytorch_utils import log_velocity_rolls
 from train_score_inf import (
     init_wandb,
     _select_velocity_metrics,
+    _model_param_sizes,
     _write_training_stats,
     _resolve_score_inf_conditioning,
     _required_target_rolls,
@@ -169,14 +170,17 @@ def train(cfg):
             model_name = f"{model_name}+score_{method}"
         checkpoints_dir = os.path.join(cfg.exp.workspace, "checkpoints", model_name)
         logs_dir = os.path.join(cfg.exp.workspace, "logs", model_name)
+        base_model = _unwrap_model(model)
+        params_count, params_k, params_m = _model_param_sizes(base_model)
 
         if is_main:
             create_folder(checkpoints_dir)
             create_folder(logs_dir)
-            _write_training_stats(cfg, checkpoints_dir, model_name)
+            _write_training_stats(cfg, checkpoints_dir, model_name, params_count=params_count)
             create_logging(logs_dir, filemode="w")
             logging.info(cfg)
             logging.info(f"Using {device}.")
+            logging.info(f"Model Params: {params_count} ({params_k:.3f} K, {params_m:.3f} M)")
             logging.info(
                 f"Distributed={dist_enabled}, rank={rank}/{world_size}, "
                 f"parallelism={'FSDP' if use_fsdp else ('DDP' if dist_enabled else 'single')}, "

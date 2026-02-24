@@ -42,7 +42,17 @@ def _select_velocity_metrics(statistics):
     return {k: statistics[k] for k in keep_keys if k in statistics}
 
 
-def _write_training_stats(cfg, checkpoints_dir: str, model_name: str) -> None:
+def _model_param_sizes(model: torch.nn.Module) -> Tuple[int, float, float]:
+    params_count = int(sum(p.numel() for p in model.parameters()))
+    return params_count, float(params_count / 1e3), float(params_count / 1e6)
+
+
+def _write_training_stats(
+    cfg,
+    checkpoints_dir: str,
+    model_name: str,
+    params_count: int,
+) -> None:
     stats_path = os.path.join(checkpoints_dir, "training_stats.txt")
     file_name = getattr(cfg.wandb, "name", None) if hasattr(cfg, "wandb") else None
     file_name = file_name or model_name
@@ -76,6 +86,9 @@ def _write_training_stats(cfg, checkpoints_dir: str, model_name: str) -> None:
         f"score_inf_method    :{score_method}",
         f"train_mode          :{train_mode}",
         f"switch_iteration    :{switch_iteration}",
+        f"params_count        :{params_count}",
+        f"params_size_k       :{params_count / 1e3:.3f}",
+        f"params_size_m       :{params_count / 1e6:.3f}",
     ]
 
     with open(stats_path, "w") as f:
@@ -270,13 +283,15 @@ def train(cfg):
         model_name = f"{model_name}+score_{method}"
     checkpoints_dir = os.path.join(cfg.exp.workspace, "checkpoints", model_name)
     logs_dir = os.path.join(cfg.exp.workspace, "logs", model_name)
+    params_count, params_k, params_m = _model_param_sizes(model)
 
     create_folder(checkpoints_dir)
     create_folder(logs_dir)
-    _write_training_stats(cfg, checkpoints_dir, model_name)
+    _write_training_stats(cfg, checkpoints_dir, model_name, params_count=params_count)
     create_logging(logs_dir, filemode="w")
     logging.info(cfg)
     logging.info(f"Using {device}.")
+    logging.info(f"Model Params: {params_count} ({params_k:.3f} K, {params_m:.3f} M)")
 
     start_iteration = 0
     init_phase = _phase_at_iteration(train_mode, start_iteration, switch_iteration)
