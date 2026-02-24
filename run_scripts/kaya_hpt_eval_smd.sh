@@ -55,6 +55,9 @@ CKPT_SRC=$MYSCRATCH/202510_hpt_data/workspaces/checkpoints
 CKPT_VIEW=$WORKSPACE_DIR/checkpoints
 ln -s $CKPT_SRC $CKPT_VIEW
 
+echo "HDF5 link -> $(readlink -f "$DATA_VIEW")"
+echo "CKPT link -> $(readlink -f "$CKPT_VIEW")"
+
 TEST_SET=${1:-smd}
 END_ITER=${2:-120000}
 STEP_ITER=${3:-10000}
